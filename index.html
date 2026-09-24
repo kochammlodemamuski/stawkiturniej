@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Turniej Zakłady</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f4f8; --card:#ffffff; --card2:#eef0f5; --text:#14161b; --muted:#6a7080; --line:#dcdfe7;
+  --accent:#5b4df0; --accent-soft:#e9e6ff; --accent-text:#ffffff;
+  --win:#119a4c; --win-soft:#dcf4e6; --lose:#d13b3b; --lose-soft:#fde5e5; --warn:#a86a12; --warn-soft:#fdf0d9;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1015; --card:#171a21; --card2:#1f232c; --text:#eceef3; --muted:#9097a6; --line:#2a2f3a;
+    --accent:#8a7eff; --accent-soft:#29244f; --accent-text:#0e1015;
+    --win:#3ecf7f; --win-soft:#13301f; --lose:#ff6b6b; --lose-soft:#371b1e; --warn:#f0b454; --warn-soft:#352812;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1015; --card:#171a21; --card2:#1f232c; --text:#eceef3; --muted:#9097a6; --line:#2a2f3a;
+  --accent:#8a7eff; --accent-soft:#29244f; --accent-text:#0e1015;
+  --win:#3ecf7f; --win-soft:#13301f; --lose:#ff6b6b; --lose-soft:#371b1e; --warn:#f0b454; --warn-soft:#352812;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.45}
+button,input,select{font:inherit;color:inherit}
+[hidden]{display:none!important}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+
+/* login */
+.screen{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+.lcard{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:28px 24px}
+.lcard h1{font-size:20px;margin:14px 0 2px;letter-spacing:-.02em;text-align:center}
+.lcard .sub{text-align:center}
+.field{display:flex;flex-direction:column;gap:6px;margin-top:16px}
+.field span{font-size:12px;font-weight:600;color:var(--muted)}
+.input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:15px}
+.input:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+.lerr{color:var(--lose);font-size:13px;min-height:18px;margin:10px 0 0}
+.bigicon{display:grid;place-items:center;width:52px;height:52px;border-radius:14px;background:var(--accent);color:var(--accent-text);font-size:26px;margin:0 auto}
+.lcard code{background:var(--card2);padding:1px 6px;border-radius:5px;font-size:12px}
+
+/* header */
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.hbar{display:flex;align-items:center;gap:10px;min-height:64px;flex-wrap:wrap;padding:10px 0}
+.logo{font-weight:800;font-size:18px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+.logo i{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--accent);color:var(--accent-text);font-style:normal;font-size:15px}
+.spacer{flex:1}
+.userbox{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.uchip{font-weight:700}
+.badge{font-size:11px;font-weight:700;color:var(--warn);background:var(--warn-soft);border-radius:6px;padding:2px 7px}
+.pill{background:var(--accent-soft);color:var(--accent);font-weight:700;border-radius:999px;padding:6px 12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.linkbtn{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--muted)}
+.linkbtn:hover{color:var(--text)}
+
+h2{font-size:16px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+section{margin:22px 0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+.phead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+
+/* bracket */
+.bracket-wrap{overflow-x:auto;padding-bottom:6px;margin:0 -4px}
+.bracket{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));grid-template-rows:32px repeat(14,52px);column-gap:26px;min-width:900px;padding:0 4px}
+.rtitle{grid-row:1;text-align:center;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.match{align-self:center;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .15s}
+.match:hover{border-color:var(--accent);transform:translateY(-1px)}
+.match:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mhead{display:flex;justify-content:space-between;align-items:center;height:22px;padding:0 10px;font-size:11px;color:var(--muted);background:var(--card2)}
+.mhead .st{display:flex;align-items:center;gap:5px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.st.open .dot{background:var(--win)} .st.closed .dot{background:var(--warn)}
+.mytag{color:var(--accent);font-weight:700}
+.slot{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-top:1px solid var(--line)}
+.slot .rk{font-size:11px;color:var(--muted);width:24px;font-variant-numeric:tabular-nums}
+.slot .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.slot .od{font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:1px 7px;border-radius:6px;font-variant-numeric:tabular-nums}
+.slot.tbd .nm{font-style:italic;color:var(--muted);font-weight:400}
+.slot.win .nm{color:var(--win);font-weight:700}
+.slot.lose .nm{color:var(--muted);text-decoration:line-through}
+.slot.isme{background:var(--accent-soft)}
+.slot.picked{box-shadow:inset 3px 0 0 var(--accent)}
+
+.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right}
+tr.me td{background:var(--accent-soft)}
+tr.me td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+tr.me .uname{color:var(--accent);font-weight:700}
+.pos{color:var(--win);font-weight:600} .neg{color:var(--lose);font-weight:600}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.tag.pending{background:var(--warn-soft);color:var(--warn)}
+.tag.won{background:var(--win-soft);color:var(--win)}
+.tag.lost{background:var(--lose-soft);color:var(--lose)}
+.tag.out{background:var(--card2);color:var(--muted)}
+.tag.champ{background:var(--accent-soft);color:var(--accent)}
+.tablebox{overflow-x:auto}
+.feed{max-height:520px;overflow:auto}
+.empty{color:var(--muted);text-align:center;padding:24px 8px}
+.filters{display:flex;gap:6px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 11px;font-size:12px;cursor:pointer}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
+
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(10,12,18,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:16px;width:100%;max-width:480px;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.mtop{padding:16px 18px 10px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.mtop h3{margin:0;font-size:17px}
+.x{margin-left:auto;border:0;background:var(--card2);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;flex:none}
+.mbody{padding:14px 18px 18px}
+.cands{display:flex;flex-direction:column;gap:6px;margin:4px 0 14px}
+.cand{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer}
+.cand:hover{border-color:var(--accent)}
+.cand.sel{border-color:var(--accent);background:var(--accent-soft)}
+.cand input{accent-color:var(--accent);margin:0}
+.cand .nm{font-weight:600}
+.cand .pr{color:var(--muted);font-size:12px;width:44px;text-align:right}
+.cand .od{font-weight:800;color:var(--accent);width:52px;text-align:right;font-variant-numeric:tabular-nums}
+.bar{height:4px;background:var(--card2);border-radius:4px;overflow:hidden;margin-top:4px}
+.bar b{display:block;height:100%;background:var(--accent)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stake{flex:1;min-width:110px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:16px;font-weight:600}
+.q{border:1px solid var(--line);background:var(--card2);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600}
+.btn{border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-text)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:var(--card2);color:var(--text)}
+.btn.danger{background:var(--lose-soft);color:var(--lose)}
+.btn.win{background:var(--win-soft);color:var(--win)}
+.full{width:100%;margin-top:12px}
+.note{color:var(--muted);font-size:12px;margin:8px 0 0}
+.potential{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:13px;flex-wrap:wrap}
+.potential b{color:var(--win)}
+.mbets{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.mbets h4,.admin h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.mbet{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:4px 0}
+.mbet.me{color:var(--accent);font-weight:600}
+.cancel{border:0;background:none;color:var(--lose);cursor:pointer;font-size:12px;font-weight:600;padding:2px 4px}
+.admin{margin-top:16px;border-top:1px dashed var(--warn);padding-top:12px}
+.admin .row{margin-bottom:8px}
+body.busy .modal button, body.busy #loginForm button{pointer-events:none;opacity:.6}
+
+footer{color:var(--muted);font-size:12px;padding:10px 0 40px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:60;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+.howto{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
+.howto div{background:var(--card2);border-radius:10px;padding:10px 12px;font-size:13px}
+.howto b{display:block;margin-bottom:2px}
+@media (max-width:700px){.howto{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- brak konfiguracji -->
+<div class="screen" id="setup" hidden>
+  <div class="lcard">
+    <div class="bigicon">⚙️</div>
+    <h1>Brak połączenia z bazą</h1>
+    <p class="sub">Uzupełnij <code>https://nzbngbworfnsbybgypaz.supabase.co</code> i <code>sb_publishable_Kf9YUgEEDhEXPFLbvF1-fw_T1sE9k7G</code> w sekcji <code>CONFIG</code> pliku <code>index.html</code>.</p>
+  </div>
+</div>
+
+<!-- logowanie -->
+<div class="screen" id="login" hidden>
+  <form class="lcard" id="loginForm" autocomplete="on">
+    <div class="bigicon">🏆</div>
+    <h1>Turniej · Zakłady</h1>
+    <p class="sub">Zaloguj się, żeby obstawiać</p>
+    <label class="field"><span>Kim jesteś?</span>
+      <select class="input" id="lUser" name="username" required><option value="">Ładowanie…</option></select>
+    </label>
+    <label class="field"><span>Hasło</span>
+      <input class="input" id="lPass" name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn full" id="lBtn" type="submit">Zaloguj</button>
+    <p class="lerr" id="lErr" role="alert"></p>
+    <p class="note" style="text-align:center">Hasło dostajesz od organizatora.</p>
+  </form>
+</div>
+
+<!-- aplikacja -->
+<div id="app" hidden>
+  <header>
+    <div class="wrap hbar">
+      <div class="logo"><i>🏆</i> Turniej · Zakłady</div>
+      <div class="spacer"></div>
+      <div class="userbox">
+        <span class="uchip" id="uName"></span>
+        <span class="badge" id="uAdmin" hidden>Organizator</span>
+        <span class="pill" id="balance"></span>
+        <button class="linkbtn" id="refreshBtn" title="Odśwież">↻</button>
+        <button class="linkbtn" id="logoutBtn">Wyloguj</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <div class="howto">
+        <div><b>1. Kliknij mecz</b>Możesz typować też przyszłe rundy: kto awansuje dalej.</div>
+        <div><b>2. Kurs z rankingu</b>Kurs jest ustalany w chwili zakładu. Niespodzianka = więcej punktów.</div>
+        <div><b>3. Wszystko jawne</b>Każdy widzi zakłady wszystkich. Swój zakład możesz anulować, dopóki mecz jest otwarty.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="phead"><div><h2>Drabinka</h2><p class="sub">Kliknij dowolny mecz, żeby postawić zakład.</p></div></div>
+      <div class="bracket-wrap"><div class="bracket" id="bracket"></div></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
+        <div class="phead"><div><h2>Tabela uczestników</h2><p class="sub">Ranking według punktów (dostępne + w grze).</p></div></div>
+        <div class="tablebox"><table id="leaderboard"></table></div>
+      </section>
+      <section class="panel">
+        <div class="phead"><div><h2>Szanse na tytuł</h2><p class="sub">Liczone z rankingu i aktualnych wyników.</p></div></div>
+        <div class="tablebox"><table id="players"></table></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="phead">
+        <div><h2>Wszystkie zakłady</h2><p class="sub">Każdy widzi typy wszystkich.</p></div>
+        <div class="filters" id="filters">
+          <button class="chip on" data-f="all">Wszystkie</button>
+          <button class="chip" data-f="mine">Moje</button>
+          <button class="chip" data-f="pending">W grze</button>
+        </div>
+      </div>
+      <div class="tablebox feed"><table id="feed"></table></div>
+    </section>
+
+    <footer id="footer"></footer>
+  </main>
+</div>
+
+<div class="overlay" id="overlay" hidden><div class="modal" role="dialog" aria-modal="true" id="modal"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* =========================================================
+   KONFIGURACJA
+   ========================================================= */
+const CONFIG = {
+  SUPABASE_URL: '',     // ← Project URL, np. https://abcdefgh.supabase.co
+  SUPABASE_KEY: '',     // ← klucz publiczny: "publishable" (sb_publishable_…) albo "anon"
+  REFRESH_SECONDS: 30,  // co ile sekund strona pobiera nowe zakłady innych
+};
+// Uwaga: klucz publiczny MOŻE być w kodzie strony. Baza wpuszcza go tylko do funkcji api_*.
+// NIGDY nie wklejaj tu klucza "secret" / "service_role".
+
+const ROUND_NAMES = { 1:'Runda 1', 2:'Ćwierćfinał', 3:'Półfinał', 4:'Finał' };
+const ROUND_GOAL  = { 1:'awansuje do ćwierćfinału', 2:'awansuje do półfinału', 3:'awansuje do finału', 4:'wygra turniej' };
+
+/* ========================================================= */
+const Local = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ v==null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} }
+};
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => Math.round(n).toLocaleString('pl-PL');
+const pct = p => p >= 0.995 ? '>99%' : p < 0.005 ? '<1%' : Math.round(p*100)+'%';
+
+let S = null, token = Local.get('turniej-token');
+let PMAP = {}, MMAP = {}, UMAP = {}, ELIM = new Set();
+let feedFilter = 'all', modal = { match:null, pick:null }, busy = false, pollT = null;
+
+/* ---------- API ---------- */
+const RPC = {
+  users:  d => ['api_users',  {}],
+  login:  d => ['api_login',  { p_login:d.login, p_password:d.password }],
+  logout: d => ['api_logout', { p_token:token }],
+  state:  d => ['api_state',  { p_token:token }],
+  bet:    d => ['api_bet',    { p_token:token, p_match:d.match, p_pick:d.pick, p_stake:d.stake, p_odds:d.odds }],
+  cancel: d => ['api_cancel', { p_token:token, p_bet:d.bet }],
+  result: d => ['api_result', { p_token:token, p_match:d.match, p_winner:d.winner }],
+  undo:   d => ['api_undo',   { p_token:token, p_match:d.match }],
+  toggle: d => ['api_toggle', { p_token:token, p_match:d.match }],
+};
+const apiErr = (msg, code) => Object.assign(new Error(msg), { code });
+async function api(action, data = {}){
+  const [fn, args] = RPC[action](data);
+  let res, j = null;
+  try{
+    res = await fetch(`${CONFIG.SUPABASE_URL.replace(/\/+$/,'')}/rest/v1/rpc/${fn}`, {
+      method:'POST',
+      headers:{ 'apikey':CONFIG.SUPABASE_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify(args),
+    });
+  }catch(e){ throw apiErr('Brak połączenia z serwerem. Spróbuj ponownie.', 'NET'); }
+  try{ j = await res.json(); }catch(e){}
+  if(!res.ok) throw apiErr((j && j.message) || `Błąd serwera (${res.status}).`, j && j.hint);
+  if(!j || j.ok === false) throw apiErr((j && j.error) || 'Błąd serwera.');
+  return j;
+}
+function handleErr(e){
+  if(e.code === 'AUTH') return logout(e.message);
+  toast(e.message);
+}
+function setBusy(b){ busy = b; document.body.classList.toggle('busy', b); }
+
+/* ---------- stan ---------- */
+function setState(s){
+  S = s;
+  PMAP = Object.fromEntries(s.players.map(p => [p.id,p]));
+  MMAP = Object.fromEntries(s.matches.map(m => [m.id,m]));
+  UMAP = Object.fromEntries(s.users.map(u => [u.login,u]));
+  ELIM = new Set(s.eliminated);
+}
+const pname = id => PMAP[id] ? PMAP[id].name : id;
+const uname = id => UMAP[id] ? UMAP[id].name : id;
+const prank = id => PMAP[id] ? PMAP[id].rank : '?';
+const known = slot => slot.p || S.results[slot.from] || null;
+const matchStatus = mid => S.results[mid] ? 'done' : S.closed[mid] ? 'closed' : 'open';
+const oddsOf = (mid,pid) => (S.odds[mid] || {})[pid] || null;
+const probOf = (mid,pid) => (S.probs[mid] || {})[pid] || 0;
+const myLogin = () => S.me.login;
+const myBalance = () => UMAP[myLogin()] ? UMAP[myLogin()].balance : 0;
+
+/* ---------- ekrany ---------- */
+function show(which){ ['setup','login','app'].forEach(id => $('#'+id).hidden = id !== which); }
+
+async function showLogin(msg){
+  show('login'); closeModal();
+  $('#lErr').textContent = msg || '';
+  const sel = $('#lUser');
+  if(sel.dataset.loaded) return;
+  try{
+    const r = await api('users');
+    const last = Local.get('turniej-last');
+    sel.innerHTML = '<option value="">— wybierz —</option>' +
+      r.users.sort((a,b) => a.name.localeCompare(b.name,'pl'))
+        .map(u => `<option value="${esc(u.login)}"${u.login===last?' selected':''}>${esc(u.name)}</option>`).join('');
+    sel.dataset.loaded = '1';
+    if(last) $('#lPass').focus();
+  }catch(e){
+    sel.innerHTML = '<option value="">Nie udało się wczytać listy</option>';
+    $('#lErr').textContent = e.message;
+  }
+}
+
+function logout(msg){
+  if(token && !msg) api('logout').catch(() => {});
+  token = null; S = null;
+  Local.set('turniej-token', null);
+  stopPolling();
+  showLogin(msg);
+}
+
+function enterApp(state){
+  setState(state); show('app'); renderAll(); startPolling();
+}
+
+async function refresh(silent){
+  if(!token || busy) return;
+  try{ const r = await api('state'); setState(r.state); renderAll(); }
+  catch(e){ if(e.code === 'AUTH' || !silent) handleErr(e); }
+}
+function startPolling(){ stopPolling(); pollT = setInterval(() => { if(!document.hidden) refresh(true); }, CONFIG.REFRESH_SECONDS*1000); }
+function stopPolling(){ if(pollT) clearInterval(pollT); pollT = null; }
+document.addEventListener('visibilitychange', () => { if(!document.hidden && S) refresh(true); });
+
+/* ---------- akcje ---------- */
+async function act(action, data, onOk){
+  if(busy) return;
+  setBusy(true);
+  try{
+    const r = await api(action, data);
+    setState(r.state); renderAll();
+    if(onOk) onOk();
+  }catch(e){
+    if(e.code === 'ODDS'){
+      try{ const r = await api('state'); setState(r.state); renderAll(); if(modal.match) openModal(modal.match, true); }catch(_){}
+    }
+    handleErr(e);
+  }finally{ setBusy(false); }
+}
+
+function placeBet(){
+  const mid = modal.match, pick = modal.pick;
+  const stake = Math.floor(Number($('#stake').value));
+  const o = oddsOf(mid, pick);
+  if(!pick || !o) return toast('Wybierz gracza.');
+  if(!(stake >= S.cfg.min_stake)) return toast(`Minimalna stawka: ${S.cfg.min_stake} pkt.`);
+  if(stake > myBalance()) return toast('Nie masz tylu punktów.');
+  $('#placeBtn').textContent = 'Zapisywanie…';
+  act('bet', { match:mid, pick, stake, odds:o }, () => {
+    closeModal();
+    toast(`Postawione: ${pname(pick)} · ${fmt(stake)} pkt @ ${o.toFixed(2)}`);
+  }).finally(() => { const b = $('#placeBtn'); if(b) b.textContent = 'Postaw zakład'; });
+}
+
+/* ---------- render ---------- */
+function renderAll(){
+  if(!S) return;
+  $('#uName').textContent = S.me.name;
+  $('#uAdmin').hidden = !S.me.admin;
+  $('#balance').textContent = fmt(myBalance()) + ' pkt';
+  renderBracket(); renderLeaderboard(); renderPlayers(); renderFeed();
+  $('#footer').textContent = 'Dane z Supabase · zaktualizowano ' + new Date(S.time).toLocaleTimeString('pl-PL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function slotHTML(m, slot){
+  const k = known(slot), st = matchStatus(m.id), r = S.results[m.id];
+  if(!k) return `<div class="slot tbd"><span class="rk"></span><span class="nm">Zwycięzca ${esc(slot.from)}</span></div>`;
+  const cls = ['slot'];
+  if(r) cls.push(r===k ? 'win' : 'lose');
+  if(k === myLogin()) cls.push('isme');
+  if(S.bets.some(b => b.user===myLogin() && b.match===m.id && b.pick===k)) cls.push('picked');
+  const o = st==='open' ? oddsOf(m.id, k) : null;
+  return `<div class="${cls.join(' ')}"><span class="rk">#${esc(prank(k))}</span><span class="nm">${esc(pname(k))}</span>${o?`<span class="od">${o.toFixed(2)}</span>`:''}${r===k?'<span>✓</span>':''}</div>`;
+}
+
+function renderBracket(){
+  let html = [1,2,3,4].map(r => `<div class="rtitle" style="grid-column:${r}">${ROUND_NAMES[r]}</div>`).join('');
+  S.matches.forEach(m => {
+    const st = matchStatus(m.id);
+    const n = S.bets.filter(b => b.match===m.id).length;
+    const mine = S.bets.some(b => b.user===myLogin() && b.match===m.id);
+    const stLabel = { open:'Otwarte', closed:'Zamknięte', done:'Zakończony' }[st];
+    html += `<div class="match" tabindex="0" data-id="${esc(m.id)}" style="grid-column:${m.round};grid-row:${m.rows[0]+1}/${m.rows[1]+1}">
+      <div class="mhead"><span>Mecz ${esc(m.id)}${mine?' · <span class="mytag">✓ twój typ</span>':''}</span><span class="st ${st}"><span class="dot"></span>${stLabel}${n?` · ${n}`:''}</span></div>
+      ${slotHTML(m,m.a)}${slotHTML(m,m.b)}
+    </div>`;
+  });
+  $('#bracket').innerHTML = html;
+}
+
+function renderLeaderboard(){
+  const rows = [...S.users].sort((a,b) => (b.balance+b.pending) - (a.balance+a.pending) || a.name.localeCompare(b.name,'pl'));
+  $('#leaderboard').innerHTML = `<thead><tr><th>#</th><th>Uczestnik</th><th class="num">Dostępne</th><th class="num">W grze</th><th class="num">Zakłady</th><th class="num">Bilans</th></tr></thead><tbody>` +
+    rows.map((u,i) => `<tr class="${u.login===myLogin()?'me':''}">
+      <td>${i+1}</td>
+      <td class="uname">${esc(u.name)}${u.login===myLogin()?' (ty)':''}</td>
+      <td class="num"><b>${fmt(u.balance)}</b></td>
+      <td class="num">${u.pending?fmt(u.pending):'—'}</td>
+      <td class="num">${u.count||'—'}</td>
+      <td class="num ${u.profit>0?'pos':u.profit<0?'neg':''}">${u.profit>0?'+':''}${fmt(u.profit)}</td>
+    </tr>`).join('') + '</tbody>';
+}
+
+function renderPlayers(){
+  const champ = S.results[S.final];
+  const rows = [...S.players].sort((a,b) => a.rank-b.rank);
+  $('#players').innerHTML = `<thead><tr><th>#</th><th>Gracz</th><th>Status</th><th class="num">Tytuł</th><th class="num">Kurs</th></tr></thead><tbody>` +
+    rows.map(p => {
+      const pr = probOf(S.final, p.id);
+      const status = champ===p.id ? '<span class="tag champ">Mistrz</span>' : ELIM.has(p.id) ? '<span class="tag out">Odpadł</span>' : '<span class="tag pending">W grze</span>';
+      const o = matchStatus(S.final)==='open' ? oddsOf(S.final, p.id) : null;
+      return `<tr class="${p.id===myLogin()?'me':''}"><td>${esc(p.rank)}</td><td class="uname">${esc(p.name)}</td><td>${status}</td><td class="num">${pr?pct(pr):'—'}</td><td class="num">${o?o.toFixed(2):'—'}</td></tr>`;
+    }).join('') + '</tbody>';
+}
+
+function statusTag(b){
+  return b.status==='won' ? `<span class="tag won">+${fmt(b.payout)}</span>` : b.status==='lost' ? '<span class="tag lost">Przegrany</span>' : '<span class="tag pending">W grze</span>';
+}
+
+function renderFeed(){
+  let bets = [...S.bets].sort((a,b) => b.t-a.t);
+  if(feedFilter==='mine') bets = bets.filter(b => b.user===myLogin());
+  if(feedFilter==='pending') bets = bets.filter(b => b.status==='pending');
+  if(!bets.length){ $('#feed').innerHTML = `<tbody><tr><td class="empty">Brak zakładów.</td></tr></tbody>`; return; }
+  $('#feed').innerHTML = `<thead><tr><th>Kiedy</th><th>Kto</th><th>Mecz</th><th>Typ</th><th class="num">Stawka</th><th class="num">Kurs</th><th>Status</th></tr></thead><tbody>` +
+    bets.map(b => {
+      const m = MMAP[b.match];
+      const t = new Date(b.t).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      return `<tr class="${b.user===myLogin()?'me':''}"><td>${t}</td><td class="uname">${esc(uname(b.user))}</td><td>${esc(b.match)} <span class="sub" style="display:inline">${m?ROUND_NAMES[m.round]:''}</span></td><td><b>${esc(pname(b.pick))}</b></td><td class="num">${fmt(b.stake)}</td><td class="num">${Number(b.odds).toFixed(2)}</td><td>${statusTag(b)}</td></tr>`;
+    }).join('') + '</tbody>';
+}
+
+/* ---------- okno meczu ---------- */
+function openModal(mid, keepPick){
+  const m = MMAP[mid]; modal.match = mid;
+  if(!keepPick) modal.pick = null;
+  const st = matchStatus(mid);
+  const cands = Object.keys(S.odds[mid] || {}).map(id => [id, probOf(mid,id)]).sort((a,b) => b[1]-a[1]);
+  if(modal.pick && !oddsOf(mid, modal.pick)) modal.pick = null;
+  const title = m.round===4 ? 'Kto wygra turniej?' : `Kto wygra mecz ${m.id} i ${ROUND_GOAL[m.round]}?`;
+  const bal = myBalance();
+  let body = '';
+
+  if(st==='done'){
+    body += `<p>Wynik: <b style="color:var(--win)">${esc(pname(S.results[mid]))}</b> wygrał ten mecz.</p>`;
+  } else if(st==='closed'){
+    body += `<p class="note" style="margin-top:0">Zakłady na ten mecz są zamknięte.</p>`;
+  } else {
+    body += `<div class="cands">` + cands.map(([id,p]) => {
+      const o = oddsOf(mid,id);
+      return `<label class="cand ${modal.pick===id?'sel':''}" data-pick="${esc(id)}">
+        <input type="radio" name="pick" ${modal.pick===id?'checked':''}>
+        <div style="flex:1;min-width:0"><div class="row" style="gap:6px"><span class="nm">${esc(pname(id))}</span><span class="sub" style="margin:0">#${esc(prank(id))}</span></div><div class="bar"><b style="width:${Math.max(2,p*100)}%"></b></div></div>
+        <span class="pr">${pct(p)}</span><span class="od">${o.toFixed(2)}</span>
+      </label>`;
+    }).join('') + `</div>
+      <div class="row">
+        <input class="stake" id="stake" type="number" min="${S.cfg.min_stake}" step="10" value="${Math.max(0,Math.min(100,bal))}" inputmode="numeric" aria-label="Stawka">
+        <button class="q" data-q="50">50</button><button class="q" data-q="100">100</button><button class="q" data-q="250">250</button><button class="q" data-q="all">Wszystko</button>
+      </div>
+      <div class="potential"><span>Dostępne: ${fmt(bal)} pkt</span><span>Możliwa wygrana: <b id="pot">—</b></span></div>
+      <button class="btn full" id="placeBtn">Postaw zakład</button>`;
+    if(m.round>1 && cands.length>2) body += `<p class="note">Rywale nie są jeszcze znani. Szanse uwzględniają wszystkie możliwe ścieżki w drabince.</p>`;
+  }
+
+  const mb = S.bets.filter(b => b.match===mid).sort((a,b) => b.t-a.t);
+  body += `<div class="mbets"><h4>Zakłady na ten mecz (${mb.length})</h4>` +
+    (mb.length ? mb.map(b => {
+      const mine = b.user===myLogin();
+      const canCancel = mine && st==='open' && b.status==='pending';
+      return `<div class="mbet ${mine?'me':''}"><span>${esc(uname(b.user))} → <b>${esc(pname(b.pick))}</b></span><span>${fmt(b.stake)} @ ${Number(b.odds).toFixed(2)}${canCancel?` <button class="cancel" data-cancel="${esc(b.id)}">Anuluj</button>`:''}</span></div>`;
+    }).join('') : '<div class="note" style="margin:0">Nikt jeszcze nie obstawił.</div>') + `</div>`;
+
+  if(S.me.admin){
+    const a = known(m.a), b = known(m.b);
+    body += `<div class="admin"><h4>Organizator</h4>`;
+    if(st!=='done'){
+      if(a && b) body += `<div class="row"><button class="btn win" data-win="${esc(a)}">Wygrał: ${esc(pname(a))}</button><button class="btn win" data-win="${esc(b)}">Wygrał: ${esc(pname(b))}</button></div>`;
+      else body += `<p class="note" style="margin:0 0 8px">Wynik można wpisać, gdy obaj gracze są znani.</p>`;
+      body += `<button class="btn ghost" id="toggleClose">${st==='closed'?'Otwórz zakłady':'Zamknij zakłady (mecz startuje)'}</button>`;
+    } else {
+      body += `<button class="btn danger" id="undoBtn">Cofnij wynik</button>`;
+    }
+    body += `</div>`;
+  }
+
+  $('#modal').innerHTML = `<div class="mtop"><div><div class="sub" style="margin:0 0 2px">${ROUND_NAMES[m.round]} · Mecz ${esc(m.id)}</div><h3>${esc(title)}</h3></div><button class="x" id="closeX" aria-label="Zamknij">✕</button></div><div class="mbody">${body}</div>`;
+  $('#overlay').hidden = false;
+  updatePotential();
+}
+function closeModal(){ $('#overlay').hidden = true; modal = { match:null, pick:null }; }
+function updatePotential(){
+  const pot = $('#pot'), btn = $('#placeBtn'); if(!pot) return;
+  const stake = Math.floor(Number($('#stake').value)) || 0;
+  const o = modal.pick ? oddsOf(modal.match, modal.pick) : null;
+  pot.textContent = o && stake ? fmt(Math.round(stake*o)) + ' pkt' : '—';
+  btn.disabled = !(o && stake >= S.cfg.min_stake && stake <= myBalance());
+}
+
+let toastT;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+
+/* ---------- zdarzenia ---------- */
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if(busy) return;
+  const login = $('#lUser').value, password = $('#lPass').value;
+  if(!login) return $('#lErr').textContent = 'Wybierz, kim jesteś.';
+  setBusy(true); $('#lBtn').textContent = 'Logowanie…'; $('#lErr').textContent = '';
+  try{
+    const r = await api('login', { login, password });
+    token = r.token;
+    Local.set('turniej-token', token); Local.set('turniej-last', login);
+    $('#lPass').value = '';
+    enterApp(r.state);
+  }catch(err){ $('#lErr').textContent = err.message; }
+  finally{ setBusy(false); $('#lBtn').textContent = 'Zaloguj'; }
+});
+$('#logoutBtn').addEventListener('click', () => logout());
+$('#refreshBtn').addEventListener('click', () => refresh(false).then(() => toast('Odświeżono')));
+
+$('#bracket').addEventListener('click', e => { const m = e.target.closest('.match'); if(m) openModal(m.dataset.id); });
+$('#bracket').addEventListener('keydown', e => { const m = e.target.closest('.match'); if(m && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); openModal(m.dataset.id); } });
+$('#overlay').addEventListener('click', e => {
+  if(busy) return;
+  if(e.target.id==='overlay' || e.target.closest('#closeX')) return closeModal();
+  const c = e.target.closest('.cand');
+  if(c){ modal.pick = c.dataset.pick; document.querySelectorAll('.cand').forEach(x => { x.classList.toggle('sel', x===c); x.querySelector('input').checked = x===c; }); updatePotential(); return; }
+  const q = e.target.closest('.q');
+  if(q){ $('#stake').value = q.dataset.q==='all' ? myBalance() : q.dataset.q; updatePotential(); return; }
+  if(e.target.closest('#placeBtn')) return placeBet();
+  const cb = e.target.closest('[data-cancel]');
+  if(cb){ const mid = modal.match; return act('cancel', { bet:cb.dataset.cancel }, () => { openModal(mid); toast('Zakład anulowany, punkty wróciły.'); }); }
+  const mid = modal.match;
+  const w = e.target.closest('[data-win]');
+  if(w){ if(confirm(`Zatwierdzić: wygrał ${pname(w.dataset.win)}?`)) act('result', { match:mid, winner:w.dataset.win }, () => openModal(mid)); return; }
+  if(e.target.closest('#toggleClose')) return act('toggle', { match:mid }, () => openModal(mid));
+  if(e.target.closest('#undoBtn')){ if(confirm('Cofnąć wynik tego meczu?')) act('undo', { match:mid }, () => openModal(mid)); return; }
+});
+$('#overlay').addEventListener('input', e => { if(e.target.id==='stake') updatePotential(); });
+document.addEventListener('keydown', e => { if(e.key==='Escape' && !$('#overlay').hidden && !busy) closeModal(); });
+$('#filters').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if(!c) return;
+  feedFilter = c.dataset.f;
+  document.querySelectorAll('#filters .chip').forEach(x => x.classList.toggle('on', x===c));
+  renderFeed();
+});
+
+/* ---------- start ---------- */
+(async function boot(){
+  if(!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY) return show('setup');
+  if(token){
+    try{ const r = await api('state'); return enterApp(r.state); }
+    catch(e){
+      if(e.code === 'AUTH'){ token = null; Local.set('turniej-token', null); }
+      return showLogin(e.message);
+    }
+  }
+  showLogin();
+})();
+</script>
+</body>
+</html>
