@@ -147,6 +147,15 @@ tr.me .uname{color:var(--accent);font-weight:700}
 .mbets h4,.admin h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .mbet{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:4px 0}
 .mbet.me{color:var(--accent);font-weight:600}
+.split{display:flex;flex-direction:column;gap:7px;margin-top:2px}
+.srow{display:grid;grid-template-columns:minmax(70px,1fr) minmax(60px,1.4fr) auto;align-items:center;gap:8px;font-size:13px}
+.srow .who{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .bar{margin:0;height:6px}
+.srow .sp{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12px}
+.srow .sp b{color:var(--text);font-size:13px}
+.srow.mypick .who{color:var(--accent)}
+.srow.mypick .bar b{background:var(--accent)}
+@media (max-width:420px){.srow{grid-template-columns:minmax(60px,1fr) auto}.srow .bar{grid-column:1/-1}}
 .cancel{border:0;background:none;color:var(--lose);cursor:pointer;font-size:12px;font-weight:600;padding:2px 4px}
 .admin{margin-top:16px;border-top:1px dashed var(--warn);padding-top:12px}
 .admin .row{margin-bottom:8px}
@@ -343,6 +352,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => Math.round(n).toLocaleString('pl-PL');
 const pct = p => p >= 0.995 ? '>99%' : p < 0.005 ? '<1%' : Math.round(p*100)+'%';
+const plBets = n => n === 1 ? 'zakład' : (n%10 >= 2 && n%10 <= 4 && (n%100 < 10 || n%100 >= 20)) ? 'zakłady' : 'zakładów';
 
 let S = null, token = Local.get('turniej-token');
 let PMAP = {}, MMAP = {}, UMAP = {}, ELIM = new Set();
@@ -585,6 +595,24 @@ function openModal(mid, keepPick){
   }
 
   const mb = S.bets.filter(b => b.match===mid).sort((a,b) => b.t-a.t);
+
+  // podział stawek: ile procent puli poszło na którego gracza
+  const pool = mb.reduce((s,b) => s + Number(b.stake), 0);
+  if(pool > 0){
+    const by = {};
+    mb.forEach(b => { (by[b.pick] = by[b.pick] || { stake:0, n:0, mine:false }); by[b.pick].stake += Number(b.stake); by[b.pick].n++; if(b.user===myLogin()) by[b.pick].mine = true; });
+    const rows = Object.entries(by).sort((a,b) => b[1].stake - a[1].stake);
+    // procenty sumujące się do 100 (metoda największej reszty)
+    const shares = rows.map(([,v]) => v.stake/pool*100), whole = shares.map(Math.floor);
+    let left = 100 - whole.reduce((a,b) => a+b, 0);
+    shares.map((x,i) => [i, x-whole[i]]).sort((a,b) => b[1]-a[1]).forEach(([i], k) => { if(k < left) whole[i]++; });
+    body += `<div class="mbets"><h4>Podział stawek · ${fmt(pool)} pkt</h4><div class="split">` +
+      rows.map(([id,v], i) => `<div class="srow ${v.mine?'mypick':''}">
+        <span class="who">${esc(pname(id))}</span>
+        <div class="bar"><b style="width:${Math.max(2, whole[i])}%"></b></div>
+        <span class="sp"><b>${whole[i]}%</b> · ${fmt(v.stake)} pkt · ${v.n} ${plBets(v.n)}</span>
+      </div>`).join('') + `</div></div>`;
+  }
   body += `<div class="mbets"><h4>Zakłady na ten mecz (${mb.length})</h4>` +
     (mb.length ? mb.map(b => {
       const mine = b.user===myLogin();
