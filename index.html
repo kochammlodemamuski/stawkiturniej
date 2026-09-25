@@ -114,6 +114,27 @@ tr.me .uname{color:var(--accent);font-weight:700}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 11px;font-size:12px;cursor:pointer}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
 
+/* rynki w oknie meczu */
+.mkts{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.mkt{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted)}
+.mkt:hover{color:var(--text)}
+.mkt.on{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.mkt .n{opacity:.7;font-weight:500}
+.ghead{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:10px 0 4px}
+.ghead:first-child{margin-top:0}
+.mhint{color:var(--muted);font-size:12px;margin:0 0 10px}
+.cand .mth{font-size:12px;color:var(--muted)}
+/* panel organizatora: wyniki gier */
+.gform{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.grow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--card2);border-radius:10px;padding:7px 10px}
+.grow > b{font-size:12px;width:46px;flex:none}
+.grow select{flex:1;min-width:92px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px}
+.grow .done{flex:1;font-size:13px;font-weight:600}
+.grow button{border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-text)}
+.grow button.x{background:var(--lose-soft);color:var(--lose);width:auto;height:auto}
+.glist{font-size:13px;margin:0 0 10px}
+.glist div{padding:2px 0}
+
 /* modal */
 .overlay{position:fixed;inset:0;background:rgba(10,12,18,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
 .modal{background:var(--card);border:1px solid var(--line);border-radius:16px;width:100%;max-width:480px;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -356,7 +377,7 @@ const plBets = n => n === 1 ? 'zakład' : (n%10 >= 2 && n%10 <= 4 && (n%100 < 10
 
 let S = null, token = Local.get('turniej-token');
 let PMAP = {}, MMAP = {}, UMAP = {}, ELIM = new Set();
-let feedFilter = 'all', modal = { match:null, pick:null }, busy = false, pollT = null;
+let feedFilter = 'all', modal = { match:null, pick:null, market:'winner' }, busy = false, pollT = null;
 
 /* ---------- API ---------- */
 const RPC = {
@@ -364,11 +385,13 @@ const RPC = {
   login:  d => ['api_login',  { p_login:d.login, p_password:d.password }],
   logout: d => ['api_logout', { p_token:token }],
   state:  d => ['api_state',  { p_token:token }],
-  bet:    d => ['api_bet',    { p_token:token, p_match:d.match, p_pick:d.pick, p_stake:d.stake, p_odds:d.odds }],
+  bet:    d => ['api_bet',    { p_token:token, p_match:d.match, p_pick:d.pick, p_stake:d.stake, p_odds:d.odds, p_market:(d.market && d.market!=='winner') ? d.market : undefined }],
   cancel: d => ['api_cancel', { p_token:token, p_bet:d.bet }],
   result: d => ['api_result', { p_token:token, p_match:d.match, p_winner:d.winner }],
   undo:   d => ['api_undo',   { p_token:token, p_match:d.match }],
   toggle: d => ['api_toggle', { p_token:token, p_match:d.match }],
+  game:   d => ['api_game',   { p_token:token, p_match:d.match, p_game:d.game, p_winner:d.winner, p_method:d.method }],
+  ungame: d => ['api_ungame', { p_token:token, p_match:d.match, p_game:d.game }],
 };
 const apiErr = (msg, code) => Object.assign(new Error(msg), { code });
 async function api(action, data = {}){
@@ -470,16 +493,16 @@ async function act(action, data, onOk){
 }
 
 function placeBet(){
-  const mid = modal.match, pick = modal.pick;
+  const mid = modal.match, pick = modal.pick, market = modal.market || 'winner';
   const stake = Math.floor(Number($('#stake').value));
-  const o = oddsOf(mid, pick);
-  if(!pick || !o) return toast('Wybierz gracza.');
+  const o = selOdds(mid, market, pick);
+  if(!pick || !o) return toast('Wybierz typ.');
   if(!(stake >= S.cfg.min_stake)) return toast(`Minimalna stawka: ${S.cfg.min_stake} pkt.`);
   if(stake > myBalance()) return toast('Nie masz tylu punktów.');
   $('#placeBtn').textContent = 'Zapisywanie…';
-  act('bet', { match:mid, pick, stake, odds:o }, () => {
+  act('bet', { match:mid, pick, stake, odds:o, market }, () => {
     closeModal();
-    toast(`Postawione: ${pname(pick)} · ${fmt(stake)} pkt @ ${o.toFixed(2)}`);
+    toast(`Postawione: ${selLabel(market, pick)} · ${fmt(stake)} pkt @ ${o.toFixed(2)}`);
   }).finally(() => { const b = $('#placeBtn'); if(b) b.textContent = 'Postaw zakład'; });
 }
 
@@ -499,7 +522,7 @@ function slotHTML(m, slot){
   const cls = ['slot'];
   if(r) cls.push(r===k ? 'win' : 'lose');
   if(k === myLogin()) cls.push('isme');
-  if(S.bets.some(b => b.user===myLogin() && b.match===m.id && b.pick===k)) cls.push('picked');
+  if(S.bets.some(b => b.user===myLogin() && b.match===m.id && (b.market||'winner')==='winner' && b.pick===k)) cls.push('picked');
   const o = st==='open' ? oddsOf(m.id, k) : null;
   return `<div class="${cls.join(' ')}"><span class="rk">#${esc(prank(k))}</span><span class="nm">${esc(pname(k))}</span>${o?`<span class="od">${o.toFixed(2)}</span>`:''}${r===k?'<span>✓</span>':''}</div>`;
 }
@@ -545,7 +568,7 @@ function renderPlayers(){
 }
 
 function statusTag(b){
-  return b.status==='won' ? `<span class="tag won">+${fmt(b.payout)}</span>` : b.status==='lost' ? '<span class="tag lost">Przegrany</span>' : '<span class="tag pending">W grze</span>';
+  return b.status==='won' ? `<span class="tag won">+${fmt(b.payout)}</span>` : b.status==='lost' ? '<span class="tag lost">Przegrany</span>' : b.status==='void' ? '<span class="tag out">Zwrot stawki</span>' : '<span class="tag pending">W grze</span>';
 }
 
 function renderFeed(){
@@ -557,95 +580,201 @@ function renderFeed(){
     bets.map(b => {
       const m = MMAP[b.match];
       const t = new Date(b.t).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-      return `<tr class="${b.user===myLogin()?'me':''}"><td>${t}</td><td class="uname">${esc(uname(b.user))}</td><td>${esc(b.match)} <span class="sub" style="display:inline">${m?ROUND_NAMES[m.round]:''}</span></td><td><b>${esc(pname(b.pick))}</b></td><td class="num">${fmt(b.stake)}</td><td class="num">${Number(b.odds).toFixed(2)}</td><td>${statusTag(b)}</td></tr>`;
+      return `<tr class="${b.user===myLogin()?'me':''}"><td>${t}</td><td class="uname">${esc(uname(b.user))}</td><td>${esc(b.match)} <span class="sub" style="display:inline">${m?ROUND_NAMES[m.round]:''}</span></td><td><b>${esc(selLabel(b.market||'winner', b.pick))}</b>${b.market&&b.market!=='winner'?` <span class="sub" style="display:inline">${esc(marketName(b.market))}</span>`:''}</td><td class="num">${fmt(b.stake)}</td><td class="num">${Number(b.odds).toFixed(2)}</td><td>${statusTag(b)}</td></tr>`;
     }).join('') + '</tbody>';
 }
 
 /* ---------- okno meczu ---------- */
+const MARKETS = [
+  ['winner', 'Zwycięzca'],
+  ['score',  'Wynik BO3'],
+  ['method', 'Sposób gry'],
+  ['wm',     'Zwycięzca + sposób'],
+];
+const METHODS = [['tower','wieża'], ['cs','100 CS'], ['kill','zabójstwo']];
+const MARKET_HINT = {
+  winner: '',
+  score:  'Kto wygra i jakim wynikiem całej serii.',
+  method: 'Czym skończy się dana gra. Jeśli gra się nie odbędzie (wynik 2:0), stawka wraca.',
+  wm:     'Kto wygra mecz i czym zamknie serię — liczy się ostatnia, decydująca gra.',
+};
+const methodName = m => (METHODS.find(x => x[0] === m) || [m, m])[1];
+const marketName = k => (MARKETS.find(x => x[0] === k) || [k, k])[1];
+
+const mOdds  = mid => (S.modds  && S.modds[mid])  || {};
+const mProbs = mid => (S.mprobs && S.mprobs[mid]) || {};
+const gamesOf = mid => (S.games && S.games[mid]) || [];
+const selOdds = (mid, market, sel) => market === 'winner' ? oddsOf(mid, sel) : (mOdds(mid)[market + '|' + sel] || null);
+const selProb = (mid, market, sel) => market === 'winner' ? probOf(mid, sel) : (mProbs(mid)[market + '|' + sel] || 0);
+
+function selLabel(market, sel){
+  const p = String(sel).split('|');
+  if(market === 'score')  return pname(p[0]) + ' ' + String(p[1] || '').replace('-', ':');
+  if(market === 'method') return 'Gra ' + String(p[0]).slice(1) + ' · ' + methodName(p[1]);
+  if(market === 'wm')     return pname(p[0]) + ' · ' + methodName(p[1]);
+  return pname(sel);
+}
+
+// Lista możliwych typów w danym rynku: {sel, label, extra, group, p}
+function marketOptions(mid, market, cands){
+  if(market === 'score')
+    return cands.flatMap(([id]) => ['2-0','2-1'].map(s =>
+      ({ sel:id+'|'+s, label:pname(id), extra:s.replace('-',':'), p:selProb(mid,'score',id+'|'+s) })))
+      .sort((a,b) => b.p - a.p);
+  if(market === 'wm')
+    return cands.flatMap(([id]) => METHODS.map(([k,l]) =>
+      ({ sel:id+'|'+k, label:pname(id), extra:l, p:selProb(mid,'wm',id+'|'+k) })))
+      .sort((a,b) => b.p - a.p);
+  if(market === 'method')
+    return [1,2,3].flatMap(g => METHODS.map(([k,l]) =>
+      ({ sel:'g'+g+'|'+k, label:l, group:'Gra '+g, p:selProb(mid,'method','g'+g+'|'+k) })));
+  return cands.map(([id,p]) => ({ sel:id, label:pname(id), extra:'#'+prank(id), p }));
+}
+
+function candHTML(mid, market, o){
+  const odds = selOdds(mid, market, o.sel);
+  if(!odds) return '';
+  const on = modal.market === market && modal.pick === o.sel;
+  return `<label class="cand ${on?'sel':''}" data-market="${esc(market)}" data-pick="${esc(o.sel)}">
+    <input type="radio" name="pick" ${on?'checked':''}>
+    <div style="flex:1;min-width:0"><div class="row" style="gap:6px"><span class="nm">${esc(o.label)}</span>${o.extra?`<span class="mth">${esc(o.extra)}</span>`:''}</div><div class="bar"><b style="width:${Math.max(2,o.p*100)}%"></b></div></div>
+    <span class="pr">${pct(o.p)}</span><span class="od">${odds.toFixed(2)}</span>
+  </label>`;
+}
+
+function marketBody(mid, market, cands){
+  const opts = marketOptions(mid, market, cands);
+  const hint = MARKET_HINT[market] ? `<p class="mhint">${esc(MARKET_HINT[market])}</p>` : '';
+  let group = null, out = '', open = false;
+  opts.forEach(o => {
+    const cell = candHTML(mid, market, o);
+    if(!cell) return;
+    if(o.group && o.group !== group){
+      if(open){ out += '</div>'; open = false; }
+      group = o.group;
+      out += `<div class="ghead">${esc(group)}</div>`;
+    }
+    if(!open){ out += '<div class="cands">'; open = true; }
+    out += cell;
+  });
+  if(open) out += '</div>';
+  if(!out) return hint + `<p class="note" style="margin-top:0">Na ten rynek nie ma teraz kursów.</p>`;
+  return hint + out;
+}
+
+function gamesList(gs){
+  return `<div class="glist">` + gs.map(g =>
+    `<div><b>Gra ${g.no}</b> — ${esc(pname(g.winner))} · ${esc(methodName(g.method))}</div>`).join('') + `</div>`;
+}
+
+function splitHTML(mb){
+  const pool = mb.reduce((s,b) => s + Number(b.stake), 0);
+  if(!pool) return '';
+  const groups = {};
+  mb.forEach(b => {
+    const mk = b.market || 'winner';
+    groups[mk] = groups[mk] || {};
+    const g = (groups[mk][b.pick] = groups[mk][b.pick] || { stake:0, n:0, mine:false });
+    g.stake += Number(b.stake); g.n++; if(b.user === myLogin()) g.mine = true;
+  });
+  let html = `<div class="mbets"><h4>Podział stawek · ${fmt(pool)} pkt</h4>`;
+  MARKETS.forEach(([mk, label]) => {
+    if(!groups[mk]) return;
+    const rows = Object.entries(groups[mk]).sort((a,b) => b[1].stake - a[1].stake);
+    const sub = rows.reduce((s,[,v]) => s + v.stake, 0);
+    // procenty w obrębie rynku, sumujące się do 100 (metoda największej reszty)
+    const shares = rows.map(([,v]) => v.stake/sub*100), whole = shares.map(Math.floor);
+    let left = 100 - whole.reduce((a,b) => a+b, 0);
+    shares.map((x,i) => [i, x-whole[i]]).sort((a,b) => b[1]-a[1]).forEach(([i], k) => { if(k < left) whole[i]++; });
+    html += `<div class="ghead">${esc(label)} · ${fmt(sub)} pkt</div><div class="split">` +
+      rows.map(([sel,v], i) => `<div class="srow ${v.mine?'mypick':''}">
+        <span class="who">${esc(selLabel(mk, sel))}</span>
+        <div class="bar"><b style="width:${Math.max(2, whole[i])}%"></b></div>
+        <span class="sp"><b>${whole[i]}%</b> · ${fmt(v.stake)} pkt · ${v.n} ${plBets(v.n)}</span>
+      </div>`).join('') + `</div>`;
+  });
+  return html + `</div>`;
+}
+
+function adminHTML(mid, m, st){
+  const a = known(m.a), b = known(m.b);
+  const byNo = {}; gamesOf(mid).forEach(g => byNo[g.no] = g);
+  let html = `<div class="admin"><h4>Organizator · wyniki gier</h4>`;
+  if(!a || !b){
+    html += `<p class="note" style="margin:0 0 8px">Wyniki gier można wpisać, gdy obaj gracze są znani.</p>`;
+  } else {
+    const need3 = byNo[3] || (byNo[1] && byNo[2] && byNo[1].winner !== byNo[2].winner);
+    html += `<div class="gform">` + [1,2,3].filter(n => n < 3 || need3).map(n => {
+      const g = byNo[n];
+      if(g) return `<div class="grow"><b>Gra ${n}</b><span class="done">${esc(pname(g.winner))} · ${esc(methodName(g.method))}</span><button type="button" class="x" data-ungame="${n}">Usuń</button></div>`;
+      return `<div class="grow"><b>Gra ${n}</b>
+        <select data-gw="${n}"><option value="">kto wygrał…</option><option value="${esc(a)}">${esc(pname(a))}</option><option value="${esc(b)}">${esc(pname(b))}</option></select>
+        <select data-gm="${n}"><option value="">czym…</option>${METHODS.map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+        <button type="button" data-game="${n}">Zapisz</button></div>`;
+    }).join('') + `</div>`;
+  }
+  html += st === 'done'
+    ? `<button class="btn danger" id="undoBtn">Cofnij cały wynik</button>`
+    : `<button class="btn ghost" id="toggleClose">${st==='closed'?'Otwórz zakłady':'Zamknij zakłady (mecz startuje)'}</button>`;
+  return html + `</div>`;
+}
+
 function openModal(mid, keepPick){
   const m = MMAP[mid]; modal.match = mid;
-  if(!keepPick) modal.pick = null;
+  if(!keepPick){ modal.pick = null; modal.market = 'winner'; }
   const st = matchStatus(mid);
   const cands = Object.keys(S.odds[mid] || {}).map(id => [id, probOf(mid,id)]).sort((a,b) => b[1]-a[1]);
-  if(modal.pick && !oddsOf(mid, modal.pick)) modal.pick = null;
+  const hasExtra = Object.keys(mOdds(mid)).length > 0;
+  if(!hasExtra) modal.market = 'winner';
+  if(modal.pick && !selOdds(mid, modal.market, modal.pick)) modal.pick = null;
   const title = m.round===4 ? 'Kto wygra turniej?' : `Kto wygra mecz ${m.id} i ${ROUND_GOAL[m.round]}?`;
   const bal = myBalance();
+  const gs = gamesOf(mid);
   let body = '';
 
   if(st==='done'){
     body += `<p>Wynik: <b style="color:var(--win)">${esc(pname(S.results[mid]))}</b> wygrał ten mecz.</p>`;
+    if(gs.length) body += gamesList(gs);
   } else if(st==='closed'){
     body += `<p class="note" style="margin-top:0">Zakłady na ten mecz są zamknięte.</p>`;
+    if(gs.length) body += gamesList(gs);
   } else {
-    body += `<div class="cands">` + cands.map(([id,p]) => {
-      const o = oddsOf(mid,id);
-      return `<label class="cand ${modal.pick===id?'sel':''}" data-pick="${esc(id)}">
-        <input type="radio" name="pick" ${modal.pick===id?'checked':''}>
-        <div style="flex:1;min-width:0"><div class="row" style="gap:6px"><span class="nm">${esc(pname(id))}</span><span class="sub" style="margin:0">#${esc(prank(id))}</span></div><div class="bar"><b style="width:${Math.max(2,p*100)}%"></b></div></div>
-        <span class="pr">${pct(p)}</span><span class="od">${o.toFixed(2)}</span>
-      </label>`;
-    }).join('') + `</div>
-      <div class="row">
+    if(hasExtra) body += `<div class="mkts">` + MARKETS.map(([k,l]) =>
+      `<button type="button" class="mkt ${modal.market===k?'on':''}" data-mkt="${k}">${esc(l)}</button>`).join('') + `</div>`;
+    body += marketBody(mid, modal.market, cands);
+    body += `<div class="row">
         <input class="stake" id="stake" type="number" min="${S.cfg.min_stake}" step="10" value="${Math.max(0,Math.min(100,bal))}" inputmode="numeric" aria-label="Stawka">
         <button class="q" data-q="50">50</button><button class="q" data-q="100">100</button><button class="q" data-q="250">250</button><button class="q" data-q="all">Wszystko</button>
       </div>
       <div class="potential"><span>Dostępne: ${fmt(bal)} pkt</span><span>Możliwa wygrana: <b id="pot">—</b></span></div>
       <button class="btn full" id="placeBtn">Postaw zakład</button>`;
     if(m.round>1 && cands.length>2) body += `<p class="note">Rywale nie są jeszcze znani. Szanse uwzględniają wszystkie możliwe ścieżki w drabince.</p>`;
+    if(!hasExtra) body += `<p class="note">Rynki wyniku i sposobu wygranej pojawią się, gdy organizator wgra nową wersję bazy.</p>`;
   }
 
   const mb = S.bets.filter(b => b.match===mid).sort((a,b) => b.t-a.t);
-
-  // podział stawek: ile procent puli poszło na którego gracza
-  const pool = mb.reduce((s,b) => s + Number(b.stake), 0);
-  if(pool > 0){
-    const by = {};
-    mb.forEach(b => { (by[b.pick] = by[b.pick] || { stake:0, n:0, mine:false }); by[b.pick].stake += Number(b.stake); by[b.pick].n++; if(b.user===myLogin()) by[b.pick].mine = true; });
-    const rows = Object.entries(by).sort((a,b) => b[1].stake - a[1].stake);
-    // procenty sumujące się do 100 (metoda największej reszty)
-    const shares = rows.map(([,v]) => v.stake/pool*100), whole = shares.map(Math.floor);
-    let left = 100 - whole.reduce((a,b) => a+b, 0);
-    shares.map((x,i) => [i, x-whole[i]]).sort((a,b) => b[1]-a[1]).forEach(([i], k) => { if(k < left) whole[i]++; });
-    body += `<div class="mbets"><h4>Podział stawek · ${fmt(pool)} pkt</h4><div class="split">` +
-      rows.map(([id,v], i) => `<div class="srow ${v.mine?'mypick':''}">
-        <span class="who">${esc(pname(id))}</span>
-        <div class="bar"><b style="width:${Math.max(2, whole[i])}%"></b></div>
-        <span class="sp"><b>${whole[i]}%</b> · ${fmt(v.stake)} pkt · ${v.n} ${plBets(v.n)}</span>
-      </div>`).join('') + `</div></div>`;
-  }
+  body += splitHTML(mb);
   body += `<div class="mbets"><h4>Zakłady na ten mecz (${mb.length})</h4>` +
     (mb.length ? mb.map(b => {
       const mine = b.user===myLogin();
       const canCancel = mine && st==='open' && b.status==='pending';
-      return `<div class="mbet ${mine?'me':''}"><span>${esc(uname(b.user))} → <b>${esc(pname(b.pick))}</b></span><span>${fmt(b.stake)} @ ${Number(b.odds).toFixed(2)}${canCancel?` <button class="cancel" data-cancel="${esc(b.id)}">Anuluj</button>`:''}</span></div>`;
+      return `<div class="mbet ${mine?'me':''}"><span>${esc(uname(b.user))} → <b>${esc(selLabel(b.market||'winner', b.pick))}</b></span><span>${fmt(b.stake)} @ ${Number(b.odds).toFixed(2)}${canCancel?` <button class="cancel" data-cancel="${esc(b.id)}">Anuluj</button>`:''}</span></div>`;
     }).join('') : '<div class="note" style="margin:0">Nikt jeszcze nie obstawił.</div>') + `</div>`;
 
-  if(S.me.admin){
-    const a = known(m.a), b = known(m.b);
-    body += `<div class="admin"><h4>Organizator</h4>`;
-    if(st!=='done'){
-      if(a && b) body += `<div class="row"><button class="btn win" data-win="${esc(a)}">Wygrał: ${esc(pname(a))}</button><button class="btn win" data-win="${esc(b)}">Wygrał: ${esc(pname(b))}</button></div>`;
-      else body += `<p class="note" style="margin:0 0 8px">Wynik można wpisać, gdy obaj gracze są znani.</p>`;
-      body += `<button class="btn ghost" id="toggleClose">${st==='closed'?'Otwórz zakłady':'Zamknij zakłady (mecz startuje)'}</button>`;
-    } else {
-      body += `<button class="btn danger" id="undoBtn">Cofnij wynik</button>`;
-    }
-    body += `</div>`;
-  }
+  if(S.me.admin) body += adminHTML(mid, m, st);
 
   $('#modal').innerHTML = `<div class="mtop"><div><div class="sub" style="margin:0 0 2px">${ROUND_NAMES[m.round]} · Mecz ${esc(m.id)}</div><h3>${esc(title)}</h3></div><button class="x" id="closeX" aria-label="Zamknij">✕</button></div><div class="mbody">${body}</div>`;
   $('#overlay').hidden = false;
   updatePotential();
 }
-function closeModal(){ $('#overlay').hidden = true; modal = { match:null, pick:null }; }
+function closeModal(){ $('#overlay').hidden = true; modal = { match:null, pick:null, market:'winner' }; }
 function updatePotential(){
   const pot = $('#pot'), btn = $('#placeBtn'); if(!pot) return;
   const stake = Math.floor(Number($('#stake').value)) || 0;
-  const o = modal.pick ? oddsOf(modal.match, modal.pick) : null;
+  const o = modal.pick ? selOdds(modal.match, modal.market, modal.pick) : null;
   pot.textContent = o && stake ? fmt(Math.round(stake*o)) + ' pkt' : '—';
   btn.disabled = !(o && stake >= S.cfg.min_stake && stake <= myBalance());
 }
-
 let toastT;
 function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
 
@@ -673,18 +802,29 @@ $('#bracket').addEventListener('keydown', e => { const m = e.target.closest('.ma
 $('#overlay').addEventListener('click', e => {
   if(busy) return;
   if(e.target.id==='overlay' || e.target.closest('#closeX')) return closeModal();
+  const mk = e.target.closest('.mkt');
+  if(mk){ modal.market = mk.dataset.mkt; modal.pick = null; return openModal(modal.match, true); }
   const c = e.target.closest('.cand');
-  if(c){ modal.pick = c.dataset.pick; document.querySelectorAll('.cand').forEach(x => { x.classList.toggle('sel', x===c); x.querySelector('input').checked = x===c; }); updatePotential(); return; }
+  if(c){ modal.market = c.dataset.market || 'winner'; modal.pick = c.dataset.pick; document.querySelectorAll('.cand').forEach(x => { x.classList.toggle('sel', x===c); x.querySelector('input').checked = x===c; }); updatePotential(); return; }
   const q = e.target.closest('.q');
   if(q){ $('#stake').value = q.dataset.q==='all' ? myBalance() : q.dataset.q; updatePotential(); return; }
   if(e.target.closest('#placeBtn')) return placeBet();
   const cb = e.target.closest('[data-cancel]');
   if(cb){ const mid = modal.match; return act('cancel', { bet:cb.dataset.cancel }, () => { openModal(mid); toast('Zakład anulowany, punkty wróciły.'); }); }
   const mid = modal.match;
+  const gb = e.target.closest('[data-game]');
+  if(gb){
+    const n = gb.dataset.game;
+    const gw = document.querySelector(`[data-gw="${n}"]`), gm = document.querySelector(`[data-gm="${n}"]`);
+    if(!gw || !gm || !gw.value || !gm.value) return toast('Wybierz, kto wygrał tę grę i czym.');
+    return act('game', { match:mid, game:Number(n), winner:gw.value, method:gm.value }, () => openModal(mid));
+  }
+  const ug = e.target.closest('[data-ungame]');
+  if(ug){ if(confirm(`Usunąć wynik gry ${ug.dataset.ungame}?`)) act('ungame', { match:mid, game:Number(ug.dataset.ungame) }, () => openModal(mid)); return; }
   const w = e.target.closest('[data-win]');
   if(w){ if(confirm(`Zatwierdzić: wygrał ${pname(w.dataset.win)}?`)) act('result', { match:mid, winner:w.dataset.win }, () => openModal(mid)); return; }
   if(e.target.closest('#toggleClose')) return act('toggle', { match:mid }, () => openModal(mid));
-  if(e.target.closest('#undoBtn')){ if(confirm('Cofnąć wynik tego meczu?')) act('undo', { match:mid }, () => openModal(mid)); return; }
+  if(e.target.closest('#undoBtn')){ if(confirm('Cofnąć wynik tego meczu (razem z wynikami gier)?')) act('undo', { match:mid }, () => openModal(mid)); return; }
 });
 $('#overlay').addEventListener('input', e => { if(e.target.id==='stake') updatePotential(); });
 document.addEventListener('keydown', e => { if(e.key==='Escape' && !$('#overlay').hidden && !busy) closeModal(); });
