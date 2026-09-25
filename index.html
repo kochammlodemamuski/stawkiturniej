@@ -165,6 +165,19 @@ footer{color:var(--muted);font-size:12px;padding:10px 0 40px}
 .tab:hover{color:var(--text)}
 .tab.on{color:var(--accent);border-bottom-color:var(--accent);background:var(--accent-soft)}
 
+/* 5v5 — tło zakładki */
+#tab5v5{position:relative;margin-top:18px;padding:14px;border-radius:16px;overflow:hidden;
+  background:#0e1015 url("5v5-bg.png") center top/cover no-repeat}
+#tab5v5::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(to bottom,color-mix(in srgb,var(--bg) 55%,transparent),color-mix(in srgb,var(--bg) 78%,transparent))}
+#tab5v5 > section{position:relative;z-index:1}
+#tab5v5 .panel{background:color-mix(in srgb,var(--card) 82%,transparent);backdrop-filter:blur(8px);border-color:color-mix(in srgb,var(--line) 70%,transparent)}
+#tab5v5 .team{background:color-mix(in srgb,var(--card2) 85%,transparent)}
+#tab5v5 .roleslot{background:color-mix(in srgb,var(--card) 90%,transparent)}
+@keyframes v5pop2{from{transform:scale(.96)}to{transform:none}}
+#tab5v5 .roleslot.locked{animation-name:v5pop2}
+@media (max-width:700px){#tab5v5{padding:8px}}
+
 /* 5v5 */
 .nickgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 @media (max-width:900px){.nickgrid{grid-template-columns:repeat(2,1fr)}}
