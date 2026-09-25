@@ -114,6 +114,9 @@ tr.me .uname{color:var(--accent);font-weight:700}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 11px;font-size:12px;cursor:pointer}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
 
+.cand.off{opacity:.42;cursor:not-allowed;border-style:dashed}
+.cand.off:hover{border-color:var(--line)}
+.mhint.backer{background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:7px 10px;font-weight:600}
 /* kupon na przebieg serii */
 .legs{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
 .leg{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -642,7 +645,7 @@ function marketOptions(mid, market, cands){
       ({ sel:id+'|'+k, label:pname(id), extra:l, p:selProb(mid,'wm',id+'|'+k) })))
       .sort((a,b) => b.p - a.p);
   if(market === 'method')
-    return [1,2,3].flatMap(g => METHODS.map(([k,l]) =>
+    return Array.from({length:boOf(mid)}, (_,i) => i+1).flatMap(g => METHODS.map(([k,l]) =>
       ({ sel:'g'+g+'|'+k, label:l, group:'Gra '+g, p:selProb(mid,'method','g'+g+'|'+k) })));
   return cands.map(([id,p]) => ({ sel:id, label:pname(id), extra:'#'+prank(id), p }));
 }
@@ -650,49 +653,97 @@ function marketOptions(mid, market, cands){
 function candHTML(mid, market, o){
   const odds = selOdds(mid, market, o.sel);
   if(!odds) return '';
+  const bad = conflicts(mid, market, o.sel);
   const on = modal.market === market && modal.pick === o.sel;
-  return `<label class="cand ${on?'sel':''}" data-market="${esc(market)}" data-pick="${esc(o.sel)}">
-    <input type="radio" name="pick" ${on?'checked':''}>
+  return `<label class="cand ${on?'sel':''} ${bad?'off':''}"${bad?'':` data-market="${esc(market)}" data-pick="${esc(o.sel)}"`}>
+    <input type="radio" name="pick" ${on?'checked':''}${bad?' disabled':''}>
     <div style="flex:1;min-width:0"><div class="row" style="gap:6px"><span class="nm">${esc(o.label)}</span>${o.extra?`<span class="mth">${esc(o.extra)}</span>`:''}</div><div class="bar"><b style="width:${Math.max(2,o.p*100)}%"></b></div></div>
     <span class="pr">${pct(o.p)}</span><span class="od">${odds.toFixed(2)}</span>
   </label>`;
 }
 
-// Kupon: zwycięzca gry 1, 2 i 3. Przy 2:0 trzeciej gry nie ma — ten leg jest neutralny.
+// Kupon: zwycięzca kolejnych gier. Gdy seria się rozstrzyga, reszta gier odpada (leg neutralny ×1).
 const pathSides = mid => [known(MMAP[mid].a), known(MMAP[mid].b)].filter(Boolean);
 const legOdds = (mid, who) => who === 'none' ? 1 : (mOdds(mid)['leg|' + who] || 0);
+const boOf = mid => (MMAP[mid] && MMAP[mid].bo) || 3;
+const needOf = mid => (boOf(mid) + 1) / 2;
+
+// Kogo popiera dany typ (rynek "sposób gry" nie wskazuje nikogo).
+function backedOf(market, sel){
+  if(market === 'winner') return sel;
+  if(market === 'score' || market === 'wm') return String(sel).split('|')[0];
+  if(market === 'path'){
+    const cnt = {};
+    String(sel).split('|').filter(x => x && x !== 'none').forEach(p => cnt[p] = (cnt[p] || 0) + 1);
+    const top = Object.entries(cnt).sort((a,b) => b[1] - a[1])[0];
+    return top ? top[0] : null;
+  }
+  return null;
+}
+function myBacked(mid){
+  for(const b of S.bets){
+    if(b.user !== myLogin() || b.match !== mid) continue;
+    const w = backedOf(b.market || 'winner', b.pick);
+    if(w) return w;
+  }
+  return null;
+}
+const conflicts = (mid, market, sel) => {
+  const mine = myBacked(mid), w = sel ? backedOf(market, sel) : null;
+  return !!(mine && w && mine !== w);
+};
+
+// Stan każdego legu kuponu: play = wybierasz, over = seria już skończona, locked = najpierw wcześniejsze gry.
+function legStates(mid){
+  const bo = boOf(mid), need = needOf(mid), sides = pathSides(mid), L = modal.legs;
+  const out = []; let wa = 0, wb = 0, fin = false, blocked = false, score = '';
+  for(let i = 0; i < bo; i++){
+    out.push(fin ? 'over' : blocked ? 'locked' : 'play');
+    const v = L[i];
+    if(!v || v === 'none' || !sides.includes(v)){ if(!fin) blocked = true; continue; }
+    if(v === sides[0]) wa++; else wb++;
+    if(wa === need || wb === need){ fin = true; score = Math.max(wa,wb) + ':' + Math.min(wa,wb); }
+  }
+  return { states: out, fin, score, bo };
+}
 
 function fixLegs(){
-  const L = modal.legs;
-  if(L[0] && L[1]){
-    if(L[0] === L[1]) L[2] = 'none';
-    else if(L[2] === 'none') L[2] = null;
-  } else {
-    L[2] = null;
+  const mid = modal.match, bo = boOf(mid), sides = pathSides(mid), L = modal.legs;
+  while(L.length < bo) L.push(null);
+  L.length = bo;
+  const { states, fin } = legStates(mid);
+  let ok = true;
+  for(let i = 0; i < bo; i++){
+    if(states[i] === 'over') L[i] = 'none';
+    else if(states[i] === 'locked'){ L[i] = null; ok = false; }
+    else if(!sides.includes(L[i])){ L[i] = null; ok = false; }
   }
-  modal.pick = (L[0] && L[1] && L[2]) ? L.join('|') : null;
+  modal.pick = (ok && fin) ? L.join('|') : null;
 }
 
 function pathBody(mid){
   const sides = pathSides(mid);
   if(sides.length < 2) return `<p class="note" style="margin-top:0">Kupon pojawi się, gdy poznamy obu graczy tego meczu.</p>`;
   fixLegs();
-  const L = modal.legs, ready = !!(L[0] && L[1]);
-  const rows = [0,1,2].map(i => {
-    const opts = sides.map(p => [p, pname(p)]);
-    if(i === 2) opts.push(['none', '2:0 — bez trzeciej gry']);
-    return `<div class="leg"><b>Gra ${i+1}</b><div class="lgs">` + opts.map(([v, label]) => {
-      const off = i === 2 && (!ready || (L[0] === L[1] ? v !== 'none' : v === 'none'));
-      const o = legOdds(mid, v);
-      return `<button type="button" class="lg ${L[i]===v?'on':''}" data-leg="${i}" data-who="${esc(v)}"${off?' disabled':''}>${esc(label)}<i>${v==='none'?'×1':(o?o.toFixed(2):'—')}</i></button>`;
-    }).join('') + `</div></div>`;
+  const L = modal.legs, { states, score } = legStates(mid), bo = boOf(mid);
+  const rows = states.map((stt, i) => {
+    const inner = stt === 'over'
+      ? `<button type="button" class="lg on" disabled>${esc(score)} — seria skończona<i>×1</i></button>`
+      : sides.map(p => {
+          const o = legOdds(mid, p);
+          return `<button type="button" class="lg ${L[i]===p?'on':''}" data-leg="${i}" data-who="${esc(p)}"${stt==='locked'?' disabled':''}>${esc(pname(p))}<i>${o?o.toFixed(2):'—'}</i></button>`;
+        }).join('');
+    return `<div class="leg"><b>Gra ${i+1}</b><div class="lgs">${inner}</div></div>`;
   }).join('');
   const total = modal.pick ? selOdds(mid, 'path', modal.pick) : null;
   const boost = Number((S.cfg && S.cfg.boost_path) || 1);
   const legs = modal.pick ? L.map(v => v==='none' ? '×1' : legOdds(mid, v).toFixed(2)).join(' × ') : '';
-  return `<div class="legs">${rows}</div>
+  const bad = conflicts(mid, 'path', modal.pick);
+  return `<p class="mhint">Mecz gramy do ${needOf(mid)} wygranych (BO${bo}).</p>
+    <div class="legs">${rows}</div>
     <div class="legtotal"><span>Kurs kuponu</span><b>${total?total.toFixed(2):'—'}</b>
-      <span class="sub">${modal.pick ? esc(legs + (boost !== 1 ? ` · premia ×${boost}` : '')) : 'wybierz zwycięzcę każdej gry'}</span></div>`;
+      <span class="sub">${modal.pick ? esc(legs + (boost !== 1 ? ` · premia ×${boost}` : '')) : 'wybierz zwycięzcę każdej gry'}</span></div>
+    ${bad?`<p class="note" style="color:var(--lose);margin-top:-6px">Ten kupon stawia na ${esc(pname(backedOf('path', modal.pick)))}, a masz już typ na ${esc(pname(myBacked(mid)))}.</p>`:''}`;
 }
 
 function marketBody(mid, market, cands){
@@ -752,20 +803,27 @@ function splitHTML(mb){
 
 function adminHTML(mid, m, st){
   const a = known(m.a), b = known(m.b);
+  const bo = boOf(mid), need = needOf(mid);
   const byNo = {}; gamesOf(mid).forEach(g => byNo[g.no] = g);
-  let html = `<div class="admin"><h4>Organizator · wyniki gier</h4>`;
+  let html = `<div class="admin"><h4>Organizator · wyniki gier (BO${bo}, do ${need} wygranych)</h4>`;
   if(!a || !b){
     html += `<p class="note" style="margin:0 0 8px">Wyniki gier można wpisać, gdy obaj gracze są znani.</p>`;
   } else {
-    const need3 = byNo[3] || (byNo[1] && byNo[2] && byNo[1].winner !== byNo[2].winner);
-    html += `<div class="gform">` + [1,2,3].filter(n => n < 3 || need3).map(n => {
+    let wa = 0, wb = 0, rows = '';
+    for(let n = 1; n <= bo; n++){
       const g = byNo[n];
-      if(g) return `<div class="grow"><b>Gra ${n}</b><span class="done">${esc(pname(g.winner))} · ${esc(methodName(g.method))}</span><button type="button" class="x" data-ungame="${n}">Usuń</button></div>`;
-      return `<div class="grow"><b>Gra ${n}</b>
-        <select data-gw="${n}"><option value="">kto wygrał…</option><option value="${esc(a)}">${esc(pname(a))}</option><option value="${esc(b)}">${esc(pname(b))}</option></select>
-        <select data-gm="${n}"><option value="">czym…</option>${METHODS.map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
-        <button type="button" data-game="${n}">Zapisz</button></div>`;
-    }).join('') + `</div>`;
+      if(!g){
+        rows += `<div class="grow"><b>Gra ${n}</b>
+          <select data-gw="${n}"><option value="">kto wygrał…</option><option value="${esc(a)}">${esc(pname(a))}</option><option value="${esc(b)}">${esc(pname(b))}</option></select>
+          <select data-gm="${n}"><option value="">czym…</option>${METHODS.map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+          <button type="button" data-game="${n}">Zapisz</button></div>`;
+        break;
+      }
+      rows += `<div class="grow"><b>Gra ${n}</b><span class="done">${esc(pname(g.winner))} · ${esc(methodName(g.method))}</span><button type="button" class="x" data-ungame="${n}">Usuń</button></div>`;
+      if(g.winner === a) wa++; else wb++;
+      if(wa === need || wb === need) break;
+    }
+    html += `<div class="gform">${rows}</div>`;
   }
   html += st === 'done'
     ? `<button class="btn danger" id="undoBtn">Cofnij cały wynik</button>`
@@ -775,7 +833,7 @@ function adminHTML(mid, m, st){
 
 function openModal(mid, keepPick){
   const m = MMAP[mid]; modal.match = mid;
-  if(!keepPick){ modal.pick = null; modal.market = 'winner'; modal.legs = [null,null,null]; }
+  if(!keepPick){ modal.pick = null; modal.market = 'winner'; modal.legs = Array(boOf(mid)).fill(null); }
   const st = matchStatus(mid);
   const cands = Object.keys(S.odds[mid] || {}).map(id => [id, probOf(mid,id)]).sort((a,b) => b[1]-a[1]);
   const hasExtra = Object.keys(mOdds(mid)).length > 0;
@@ -784,7 +842,8 @@ function openModal(mid, keepPick){
   const title = m.round===4 ? 'Kto wygra turniej?' : `Kto wygra mecz ${m.id} i ${ROUND_GOAL[m.round]}?`;
   const bal = myBalance();
   const gs = gamesOf(mid);
-  let body = '';
+  const backer = myBacked(mid);
+  let body = backer ? `<p class="mhint backer">Obstawiasz w tym meczu <b>${esc(pname(backer))}</b> — typy na rywala są zablokowane.</p>` : '';
 
   if(st==='done'){
     body += `<p>Wynik: <b style="color:var(--win)">${esc(pname(S.results[mid]))}</b> wygrał ten mecz.</p>`;
@@ -827,7 +886,8 @@ function updatePotential(){
   const stake = Math.floor(Number($('#stake').value)) || 0;
   const o = modal.pick ? selOdds(modal.match, modal.market, modal.pick) : null;
   pot.textContent = o && stake ? fmt(Math.round(stake*o)) + ' pkt' : '—';
-  btn.disabled = !(o && stake >= S.cfg.min_stake && stake <= myBalance());
+  const bad = modal.pick && conflicts(modal.match, modal.market, modal.pick);
+  btn.disabled = !(o && stake >= S.cfg.min_stake && stake <= myBalance()) || !!bad;
 }
 let toastT;
 function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
@@ -868,7 +928,7 @@ $('#overlay').addEventListener('click', e => {
     return;
   }
   const c = e.target.closest('.cand');
-  if(c){ modal.market = c.dataset.market || 'winner'; modal.pick = c.dataset.pick; document.querySelectorAll('.cand').forEach(x => { x.classList.toggle('sel', x===c); x.querySelector('input').checked = x===c; }); updatePotential(); return; }
+  if(c && !c.classList.contains('off')){ modal.market = c.dataset.market || 'winner'; modal.pick = c.dataset.pick; document.querySelectorAll('.cand').forEach(x => { x.classList.toggle('sel', x===c); x.querySelector('input').checked = x===c; }); updatePotential(); return; }
   const q = e.target.closest('.q');
   if(q){ $('#stake').value = q.dataset.q==='all' ? myBalance() : q.dataset.q; updatePotential(); return; }
   if(e.target.closest('#placeBtn')) return placeBet();
