@@ -114,6 +114,19 @@ tr.me .uname{color:var(--accent);font-weight:700}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 11px;font-size:12px;cursor:pointer}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
 
+/* kupon na przebieg serii */
+.legs{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
+.leg{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.leg > b{font-size:11px;width:44px;flex:none;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.lgs{display:flex;gap:6px;flex:1;flex-wrap:wrap;min-width:0}
+.lg{flex:1;min-width:104px;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 11px;font-size:13px;font-weight:600;cursor:pointer;text-align:left}
+.lg i{font-style:normal;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
+.lg:hover:not([disabled]){border-color:var(--accent)}
+.lg.on{border-color:var(--accent);background:var(--accent-soft)}
+.lg[disabled]{opacity:.38;cursor:not-allowed}
+.legtotal{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;background:var(--card2);border-radius:10px;padding:10px 12px;margin:0 0 12px}
+.legtotal b{font-size:21px;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1}
+.legtotal .sub{margin:0}
 /* rynki w oknie meczu */
 .mkts{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 .mkt{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted)}
@@ -377,7 +390,7 @@ const plBets = n => n === 1 ? 'zakład' : (n%10 >= 2 && n%10 <= 4 && (n%100 < 10
 
 let S = null, token = Local.get('turniej-token');
 let PMAP = {}, MMAP = {}, UMAP = {}, ELIM = new Set();
-let feedFilter = 'all', modal = { match:null, pick:null, market:'winner' }, busy = false, pollT = null;
+let feedFilter = 'all', modal = { match:null, pick:null, market:'winner', legs:[null,null,null] }, busy = false, pollT = null;
 
 /* ---------- API ---------- */
 const RPC = {
@@ -587,6 +600,7 @@ function renderFeed(){
 /* ---------- okno meczu ---------- */
 const MARKETS = [
   ['winner', 'Zwycięzca'],
+  ['path',   'Kupon 3 gier'],
   ['score',  'Wynik BO3'],
   ['method', 'Sposób gry'],
   ['wm',     'Zwycięzca + sposób'],
@@ -595,6 +609,7 @@ const METHODS = [['tower','wieża'], ['cs','100 CS'], ['kill','zabójstwo']];
 const MARKET_HINT = {
   winner: '',
   score:  'Kto wygra i jakim wynikiem całej serii.',
+  path:   'Typujesz zwycięzcę każdej gry po kolei. Kursy legów mnożą się przez siebie, więc wypłata rośnie. Jeśli tę samą osobę wskażesz w grach 1 i 2, seria kończy się 2:0 — trzeciej gry nie ma i ten leg nic nie zmienia.',
   method: 'Czym skończy się dana gra. Jeśli gra się nie odbędzie (wynik 2:0), stawka wraca.',
   wm:     'Kto wygra mecz i czym zamknie serię — liczy się ostatnia, decydująca gra.',
 };
@@ -612,6 +627,7 @@ function selLabel(market, sel){
   if(market === 'score')  return pname(p[0]) + ' ' + String(p[1] || '').replace('-', ':');
   if(market === 'method') return 'Gra ' + String(p[0]).slice(1) + ' · ' + methodName(p[1]);
   if(market === 'wm')     return pname(p[0]) + ' · ' + methodName(p[1]);
+  if(market === 'path')   return pname(p[0]) + ' › ' + pname(p[1]) + ' › ' + (p[2]==='none' ? '2:0' : pname(p[2]));
   return pname(sel);
 }
 
@@ -642,7 +658,45 @@ function candHTML(mid, market, o){
   </label>`;
 }
 
+// Kupon: zwycięzca gry 1, 2 i 3. Przy 2:0 trzeciej gry nie ma — ten leg jest neutralny.
+const pathSides = mid => [known(MMAP[mid].a), known(MMAP[mid].b)].filter(Boolean);
+const legOdds = (mid, who) => who === 'none' ? 1 : (mOdds(mid)['leg|' + who] || 0);
+
+function fixLegs(){
+  const L = modal.legs;
+  if(L[0] && L[1]){
+    if(L[0] === L[1]) L[2] = 'none';
+    else if(L[2] === 'none') L[2] = null;
+  } else {
+    L[2] = null;
+  }
+  modal.pick = (L[0] && L[1] && L[2]) ? L.join('|') : null;
+}
+
+function pathBody(mid){
+  const sides = pathSides(mid);
+  if(sides.length < 2) return `<p class="note" style="margin-top:0">Kupon pojawi się, gdy poznamy obu graczy tego meczu.</p>`;
+  fixLegs();
+  const L = modal.legs, ready = !!(L[0] && L[1]);
+  const rows = [0,1,2].map(i => {
+    const opts = sides.map(p => [p, pname(p)]);
+    if(i === 2) opts.push(['none', '2:0 — bez trzeciej gry']);
+    return `<div class="leg"><b>Gra ${i+1}</b><div class="lgs">` + opts.map(([v, label]) => {
+      const off = i === 2 && (!ready || (L[0] === L[1] ? v !== 'none' : v === 'none'));
+      const o = legOdds(mid, v);
+      return `<button type="button" class="lg ${L[i]===v?'on':''}" data-leg="${i}" data-who="${esc(v)}"${off?' disabled':''}>${esc(label)}<i>${v==='none'?'×1':(o?o.toFixed(2):'—')}</i></button>`;
+    }).join('') + `</div></div>`;
+  }).join('');
+  const total = modal.pick ? selOdds(mid, 'path', modal.pick) : null;
+  const boost = Number((S.cfg && S.cfg.boost_path) || 1);
+  const legs = modal.pick ? L.map(v => v==='none' ? '×1' : legOdds(mid, v).toFixed(2)).join(' × ') : '';
+  return `<div class="legs">${rows}</div>
+    <div class="legtotal"><span>Kurs kuponu</span><b>${total?total.toFixed(2):'—'}</b>
+      <span class="sub">${modal.pick ? esc(legs + (boost !== 1 ? ` · premia ×${boost}` : '')) : 'wybierz zwycięzcę każdej gry'}</span></div>`;
+}
+
 function marketBody(mid, market, cands){
+  if(market === 'path') return (MARKET_HINT.path ? `<p class="mhint">${esc(MARKET_HINT.path)}</p>` : '') + `<div id="pathBox">${pathBody(mid)}</div>`;
   const opts = marketOptions(mid, market, cands);
   const hint = MARKET_HINT[market] ? `<p class="mhint">${esc(MARKET_HINT[market])}</p>` : '';
   let group = null, out = '', open = false;
@@ -721,7 +775,7 @@ function adminHTML(mid, m, st){
 
 function openModal(mid, keepPick){
   const m = MMAP[mid]; modal.match = mid;
-  if(!keepPick){ modal.pick = null; modal.market = 'winner'; }
+  if(!keepPick){ modal.pick = null; modal.market = 'winner'; modal.legs = [null,null,null]; }
   const st = matchStatus(mid);
   const cands = Object.keys(S.odds[mid] || {}).map(id => [id, probOf(mid,id)]).sort((a,b) => b[1]-a[1]);
   const hasExtra = Object.keys(mOdds(mid)).length > 0;
@@ -767,7 +821,7 @@ function openModal(mid, keepPick){
   $('#overlay').hidden = false;
   updatePotential();
 }
-function closeModal(){ $('#overlay').hidden = true; modal = { match:null, pick:null, market:'winner' }; }
+function closeModal(){ $('#overlay').hidden = true; modal = { match:null, pick:null, market:'winner', legs:[null,null,null] }; }
 function updatePotential(){
   const pot = $('#pot'), btn = $('#placeBtn'); if(!pot) return;
   const stake = Math.floor(Number($('#stake').value)) || 0;
@@ -804,6 +858,15 @@ $('#overlay').addEventListener('click', e => {
   if(e.target.id==='overlay' || e.target.closest('#closeX')) return closeModal();
   const mk = e.target.closest('.mkt');
   if(mk){ modal.market = mk.dataset.mkt; modal.pick = null; return openModal(modal.match, true); }
+  const lg = e.target.closest('.lg');
+  if(lg && !lg.disabled){
+    modal.market = 'path';
+    modal.legs[Number(lg.dataset.leg)] = lg.dataset.who;
+    fixLegs();
+    const box = $('#pathBox'); if(box) box.innerHTML = pathBody(modal.match);
+    updatePotential();
+    return;
+  }
   const c = e.target.closest('.cand');
   if(c){ modal.market = c.dataset.market || 'winner'; modal.pick = c.dataset.pick; document.querySelectorAll('.cand').forEach(x => { x.classList.toggle('sel', x===c); x.querySelector('input').checked = x===c; }); updatePotential(); return; }
   const q = e.target.closest('.q');
