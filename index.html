@@ -158,6 +158,33 @@ footer{color:var(--muted);font-size:12px;padding:10px 0 40px}
 .howto div{background:var(--card2);border-radius:10px;padding:10px 12px;font-size:13px}
 .howto b{display:block;margin-bottom:2px}
 @media (max-width:700px){.howto{grid-template-columns:1fr}}
+
+/* zakładki */
+.tabs{display:flex;gap:6px;margin:18px 0 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tab{border:0;background:none;padding:10px 14px;cursor:pointer;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;border-radius:8px 8px 0 0}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);background:var(--accent-soft)}
+
+/* 5v5 */
+.nickgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+@media (max-width:900px){.nickgrid{grid-template-columns:repeat(2,1fr)}}
+.nickgrid label{display:flex;flex-direction:column;gap:4px}
+.nickgrid label span{font-size:11px;font-weight:600;color:var(--muted)}
+.nickgrid .input{padding:9px 10px;font-size:14px}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:700px){.teams{grid-template-columns:1fr}}
+.team{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px}
+.team h3{margin:0 0 6px;font-size:14px;letter-spacing:-.01em}
+.team.t1 h3{color:var(--accent)}
+.team.t2 h3{color:var(--warn)}
+.roleslot{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;min-height:40px}
+.roleslot .role{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);width:58px;flex:none}
+.roleslot .who{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.roleslot.empty .who{color:var(--muted);font-weight:400;font-style:italic}
+.roleslot.pending{border-color:var(--accent)}
+.roleslot.pending .who{color:var(--accent);opacity:.75}
+.roleslot.locked{animation:v5pop .32s ease}
+@keyframes v5pop{from{transform:scale(.96);background:var(--accent-soft)}to{transform:none;background:var(--card)}}
 </style>
 </head>
 <body>
@@ -206,6 +233,12 @@ footer{color:var(--muted);font-size:12px;padding:10px 0 40px}
   </header>
 
   <main class="wrap">
+    <nav class="tabs" id="tabs">
+      <button class="tab on" type="button" data-tab="turniej">Turniej</button>
+      <button class="tab" type="button" data-tab="5v5">5v5</button>
+    </nav>
+
+    <div id="tabTurniej">
     <section>
       <div class="howto">
         <div><b>1. Kliknij mecz</b>Możesz typować też przyszłe rundy: kto awansuje dalej.</div>
@@ -241,6 +274,30 @@ footer{color:var(--muted);font-size:12px;padding:10px 0 40px}
       </div>
       <div class="tablebox feed"><table id="feed"></table></div>
     </section>
+
+    </div><!-- /tabTurniej -->
+
+    <div id="tab5v5" hidden>
+      <section class="panel">
+        <div class="phead">
+          <div><h2>Losowanie 5v5</h2><p class="sub">Wpisz 10 nicków i kliknij „Losuj składy” — przez 3 sekundy nicki będą po kolei przydzielane do roli.</p></div>
+          <div class="row">
+            <button class="btn ghost" type="button" id="v5Clear">Wyczyść</button>
+            <button class="btn" type="button" id="v5Roll">Losuj składy</button>
+          </div>
+        </div>
+        <div class="nickgrid" id="v5Grid"></div>
+        <p class="note" id="v5Note">Kolejność: 1. nick → top D1, 2. → top D2, 3. → jg D1, 4. → jg D2, itd.</p>
+      </section>
+
+      <section class="panel">
+        <div class="phead">
+          <div><h2>Składy</h2><p class="sub">Role: top · jg · mid · adc · supp</p></div>
+          <button class="linkbtn" type="button" id="v5Copy">Kopiuj składy</button>
+        </div>
+        <div class="teams" id="v5Teams"></div>
+      </section>
+    </div><!-- /tab5v5 -->
 
     <footer id="footer"></footer>
   </main>
@@ -596,6 +653,137 @@ $('#filters').addEventListener('click', e => {
   document.querySelectorAll('#filters .chip').forEach(x => x.classList.toggle('on', x===c));
   renderFeed();
 });
+
+/* ---------- zakładki ---------- */
+function showTab(name){
+  if(name !== '5v5') name = 'turniej';
+  document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  $('#tabTurniej').hidden = name !== 'turniej';
+  $('#tab5v5').hidden     = name !== '5v5';
+  Local.set('turniej-tab', name);
+}
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if(b) showTab(b.dataset.tab); });
+
+/* ---------- 5v5: losowanie składów ---------- */
+const V5_ROLES = ['top','jg','mid','adc','supp'];   // slot i → rola V5_ROLES[i/2], drużyna (i%2)+1
+const V5_COUNT = V5_ROLES.length * 2;               // 10 nicków
+const V5_TOTAL_MS = 3000;                           // całe losowanie trwa 3 sekundy
+const V5_KEY = 'turniej-5v5-nicks';
+let v5Result = Array(V5_COUNT).fill(null), v5Rolling = false, v5Spin = null, v5Locks = [];
+
+const v5SlotIndex = (roleIdx, team) => roleIdx*2 + (team-1);
+
+function v5Nicks(){ return Array.from(document.querySelectorAll('#v5Grid .input')).map(i => i.value.trim()); }
+function v5Save(){ Local.set(V5_KEY, JSON.stringify(v5Nicks())); }
+
+function v5BuildInputs(){
+  let saved = [];
+  try{ saved = JSON.parse(Local.get(V5_KEY) || '[]') || []; }catch(e){}
+  $('#v5Grid').innerHTML = Array.from({length:V5_COUNT}, (_,i) =>
+    `<label><span>Nick ${i+1}</span><input class="input" type="text" maxlength="24" placeholder="nick" value="${esc(saved[i] || '')}"></label>`
+  ).join('');
+}
+
+function v5BuildTeams(){
+  $('#v5Teams').innerHTML = [1,2].map(t =>
+    `<div class="team t${t}"><h3>Drużyna ${t}</h3>` +
+    V5_ROLES.map((r,ri) =>
+      `<div class="roleslot empty" id="v5s${v5SlotIndex(ri,t)}"><span class="role">${r}</span><span class="who">—</span></div>`
+    ).join('') + `</div>`
+  ).join('');
+}
+
+function v5SetSlot(i, name, state){
+  const el = document.getElementById('v5s' + i); if(!el) return;
+  el.querySelector('.who').textContent = name || '—';
+  el.className = 'roleslot' + (state ? ' ' + state : '');
+}
+
+function v5StopTimers(){
+  if(v5Spin) clearInterval(v5Spin); v5Spin = null;
+  v5Locks.forEach(clearTimeout); v5Locks = [];
+}
+
+function v5Reset(){
+  v5StopTimers();
+  v5Rolling = false;
+  v5Result = Array(V5_COUNT).fill(null);
+  v5BuildTeams();
+  const b = $('#v5Roll'); b.disabled = false; b.textContent = 'Losuj składy';
+}
+
+function v5Roll(){
+  if(v5Rolling) return;
+  const nicks = v5Nicks().filter(Boolean);
+  if(nicks.length < V5_COUNT) return toast(`Wpisz wszystkie ${V5_COUNT} nicki (brakuje ${V5_COUNT - nicks.length}).`);
+  const uniq = new Set(nicks.map(n => n.toLowerCase()));
+  if(uniq.size < V5_COUNT) toast('Uwaga: niektóre nicki się powtarzają.');
+  v5Save();
+
+  // losowa kolejność (Fisher–Yates) — pool[k] trafia do slotu k
+  const pool = nicks.slice();
+  for(let i = pool.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i+1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  v5StopTimers();
+  v5Rolling = true;
+  v5Result = Array(V5_COUNT).fill(null);
+  v5BuildTeams();
+  const btn = $('#v5Roll'); btn.disabled = true; btn.textContent = 'Losowanie…';
+
+  const step = V5_TOTAL_MS / V5_COUNT;   // 300 ms na jeden nick
+  let next = 0;
+
+  // migające nicki w slocie, który właśnie się losuje
+  v5Spin = setInterval(() => {
+    if(next >= V5_COUNT) return;
+    const left = pool.slice(next);
+    v5SetSlot(next, left[Math.floor(Math.random() * left.length)], 'pending');
+  }, 55);
+
+  for(let k = 0; k < V5_COUNT; k++){
+    v5Locks.push(setTimeout(() => {
+      v5Result[k] = pool[k];
+      v5SetSlot(k, pool[k], 'locked');
+      next = k + 1;
+      if(k === V5_COUNT - 1){
+        v5StopTimers();
+        v5Rolling = false;
+        btn.disabled = false; btn.textContent = 'Losuj ponownie';
+        toast('Składy wylosowane!');
+      }
+    }, (k+1) * step));
+  }
+}
+
+function v5CopyTeams(){
+  if(v5Rolling) return;
+  if(v5Result.some(x => !x)) return toast('Najpierw wylosuj składy.');
+  const txt = [1,2].map(t => `Drużyna ${t}\n` +
+    V5_ROLES.map((r,ri) => `${r}: ${v5Result[v5SlotIndex(ri,t)]}`).join('\n')
+  ).join('\n\n');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(() => toast('Skopiowane do schowka.'), () => toast('Nie udało się skopiować.'));
+  }else{
+    toast('Schowek niedostępny w tej przeglądarce.');
+  }
+}
+
+$('#v5Roll').addEventListener('click', v5Roll);
+$('#v5Copy').addEventListener('click', v5CopyTeams);
+$('#v5Clear').addEventListener('click', () => {
+  if(v5Rolling) return;
+  document.querySelectorAll('#v5Grid .input').forEach(i => i.value = '');
+  v5Save(); v5Reset();
+});
+$('#v5Grid').addEventListener('input', v5Save);
+$('#v5Grid').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); v5Roll(); } });
+
+v5BuildInputs();
+v5BuildTeams();
+showTab(Local.get('turniej-tab'));
 
 /* ---------- start ---------- */
 (async function boot(){
