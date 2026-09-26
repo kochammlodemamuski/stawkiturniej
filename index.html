@@ -70,6 +70,7 @@ section{margin:22px 0}
 /* bracket */
 .bracket-wrap{overflow-x:auto;padding-bottom:6px;margin:0 -4px}
 .bracket{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));grid-template-rows:32px repeat(16,52px);column-gap:26px;min-width:900px;padding:0 4px}
+.bracket.lower{grid-template-columns:repeat(6,minmax(168px,1fr));grid-template-rows:32px repeat(8,52px);column-gap:18px;min-width:1080px}
 .rtitle{grid-row:1;text-align:center;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .match{align-self:center;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .15s}
 .match:hover{border-color:var(--accent);transform:translateY(-1px)}
@@ -107,6 +108,7 @@ tr.me .uname{color:var(--accent);font-weight:700}
 .tag.lost{background:var(--lose-soft);color:var(--lose)}
 .tag.out{background:var(--card2);color:var(--muted)}
 .tag.champ{background:var(--accent-soft);color:var(--accent)}
+.tag.down{background:var(--accent-soft);color:var(--accent)}
 .tablebox{overflow-x:auto}
 .feed{max-height:520px;overflow:auto}
 .empty{color:var(--muted);text-align:center;padding:24px 8px}
@@ -311,6 +313,11 @@ body.bg5v5 header{background:color-mix(in srgb,var(--bg) 72%,transparent)}
       <div class="bracket-wrap"><div class="bracket" id="bracket"></div></div>
     </section>
 
+    <section class="panel" id="lowerWrap" hidden>
+      <div class="phead"><div><h2>Dolna drabinka</h2><p class="sub">Kto przegra w górnej, spada tutaj i gra o niższe miejsca. Wszystkie mecze w BO3, kursy podbite.</p></div></div>
+      <div class="bracket-wrap"><div class="bracket lower" id="bracketLower"></div></div>
+    </section>
+
     <div class="grid2">
       <section class="panel">
         <div class="phead"><div><h2>Tabela uczestników</h2><p class="sub">Ranking według punktów (dostępne + w grze).</p></div></div>
@@ -378,6 +385,8 @@ const CONFIG = {
 // NIGDY nie wklejaj tu klucza "secret" / "service_role".
 
 const ROUND_NAMES = { 1:'Runda 1', 2:'Ćwierćfinał', 3:'Półfinał', 4:'Finał' };
+const LOWER_NAMES = { 1:'Dolna 1', 2:'Dolna 2', 3:'Dolna 3', 4:'Dolna 4', 5:'Dolna 5', 6:'Finał dolnej' };
+const roundName = m => m.bracket === 'lower' ? LOWER_NAMES[m.round] : ROUND_NAMES[m.round];
 const ROUND_GOAL  = { 1:'awansuje do ćwierćfinału', 2:'awansuje do półfinału', 3:'awansuje do finału', 4:'wygra turniej' };
 
 /* ========================================================= */
@@ -392,7 +401,7 @@ const pct = p => p >= 0.995 ? '>99%' : p < 0.005 ? '<1%' : Math.round(p*100)+'%'
 const plBets = n => n === 1 ? 'zakład' : (n%10 >= 2 && n%10 <= 4 && (n%100 < 10 || n%100 >= 20)) ? 'zakłady' : 'zakładów';
 
 let S = null, token = Local.get('turniej-token');
-let PMAP = {}, MMAP = {}, UMAP = {}, ELIM = new Set();
+let PMAP = {}, MMAP = {}, UMAP = {}, ELIM = new Set(), OUT = new Set();
 let feedFilter = 'all', modal = { match:null, pick:null, market:'winner', legs:[null,null,null] }, busy = false, pollT = null;
 
 /* ---------- API ---------- */
@@ -438,11 +447,12 @@ function setState(s){
   MMAP = Object.fromEntries(s.matches.map(m => [m.id,m]));
   UMAP = Object.fromEntries(s.users.map(u => [u.login,u]));
   ELIM = new Set(s.eliminated);
+  OUT  = new Set(s.out || []);
 }
 const pname = id => PMAP[id] ? PMAP[id].name : id;
 const uname = id => UMAP[id] ? UMAP[id].name : id;
 const prank = id => PMAP[id] ? PMAP[id].rank : '?';
-const known = slot => slot.p || S.results[slot.from] || null;
+const known = slot => slot.p || (slot.loser ? (S.losers || {})[slot.from] : S.results[slot.from]) || null;
 const matchStatus = mid => S.results[mid] ? 'done' : S.closed[mid] ? 'closed' : 'open';
 const oddsOf = (mid,pid) => (S.odds[mid] || {})[pid] || null;
 const probOf = (mid,pid) => (S.probs[mid] || {})[pid] || 0;
@@ -534,7 +544,7 @@ function renderAll(){
 
 function slotHTML(m, slot){
   const k = known(slot), st = matchStatus(m.id), r = S.results[m.id];
-  if(!k) return `<div class="slot tbd"><span class="rk"></span><span class="nm">Zwycięzca ${esc(slot.from)}</span></div>`;
+  if(!k) return `<div class="slot tbd"><span class="rk"></span><span class="nm">${slot.loser?'Przegrany':'Zwycięzca'} ${esc(slot.from)}</span></div>`;
   const cls = ['slot'];
   if(r) cls.push(r===k ? 'win' : 'lose');
   if(k === myLogin()) cls.push('isme');
@@ -543,19 +553,28 @@ function slotHTML(m, slot){
   return `<div class="${cls.join(' ')}"><span class="rk">#${esc(prank(k))}</span><span class="nm">${esc(pname(k))}</span>${o?`<span class="od">${o.toFixed(2)}</span>`:''}${r===k?'<span>✓</span>':''}</div>`;
 }
 
-function renderBracket(){
-  let html = [1,2,3,4].map(r => `<div class="rtitle" style="grid-column:${r}">${ROUND_NAMES[r]}</div>`).join('');
-  S.matches.forEach(m => {
-    const st = matchStatus(m.id);
-    const n = S.bets.filter(b => b.match===m.id).length;
-    const mine = S.bets.some(b => b.user===myLogin() && b.match===m.id);
-    const stLabel = { open:'Otwarte', closed:'Zamknięte', done:'Zakończony' }[st];
-    html += `<div class="match" tabindex="0" data-id="${esc(m.id)}" style="grid-column:${m.round};grid-row:${m.rows[0]+1}/${m.rows[1]+1}">
+function matchHTML(m){
+  const st = matchStatus(m.id);
+  const n = S.bets.filter(b => b.match===m.id).length;
+  const mine = S.bets.some(b => b.user===myLogin() && b.match===m.id);
+  const stLabel = { open:'Otwarte', closed:'Zamknięte', done:'Zakończony' }[st];
+  return `<div class="match" tabindex="0" data-id="${esc(m.id)}" style="grid-column:${m.round};grid-row:${m.rows[0]+1}/${m.rows[1]+1}">
       <div class="mhead"><span>Mecz ${esc(m.id)}${mine?' · <span class="mytag">✓ twój typ</span>':''}</span><span class="st ${st}"><span class="dot"></span>${stLabel}${n?` · ${n}`:''}</span></div>
       ${slotHTML(m,m.a)}${slotHTML(m,m.b)}
     </div>`;
-  });
-  $('#bracket').innerHTML = html;
+}
+
+function renderBracket(){
+  const up = S.matches.filter(m => m.bracket !== 'lower');
+  const lo = S.matches.filter(m => m.bracket === 'lower');
+  $('#bracket').innerHTML =
+    [1,2,3,4].map(r => `<div class="rtitle" style="grid-column:${r}">${ROUND_NAMES[r]}</div>`).join('') +
+    up.map(matchHTML).join('');
+  const box = $('#lowerWrap');
+  if(box) box.hidden = !lo.length;
+  if(lo.length) $('#bracketLower').innerHTML =
+    [1,2,3,4,5,6].map(r => `<div class="rtitle" style="grid-column:${r}">${LOWER_NAMES[r]}</div>`).join('') +
+    lo.map(matchHTML).join('');
 }
 
 function renderLeaderboard(){
@@ -577,7 +596,7 @@ function renderPlayers(){
   $('#players').innerHTML = `<thead><tr><th>#</th><th>Gracz</th><th>Status</th><th class="num">Tytuł</th><th class="num">Kurs</th></tr></thead><tbody>` +
     rows.map(p => {
       const pr = probOf(S.final, p.id);
-      const status = champ===p.id ? '<span class="tag champ">Mistrz</span>' : ELIM.has(p.id) ? '<span class="tag out">Odpadł</span>' : '<span class="tag pending">W grze</span>';
+      const status = champ===p.id ? '<span class="tag champ">Mistrz</span>' : OUT.has(p.id) ? '<span class="tag out">Odpadł</span>' : ELIM.has(p.id) ? '<span class="tag down">W dolnej</span>' : '<span class="tag pending">W grze</span>';
       const o = matchStatus(S.final)==='open' ? oddsOf(S.final, p.id) : null;
       return `<tr class="${p.id===myLogin()?'me':''}"><td>${esc(p.rank)}</td><td class="uname">${esc(p.name)}</td><td>${status}</td><td class="num">${pr?pct(pr):'—'}</td><td class="num">${o?o.toFixed(2):'—'}</td></tr>`;
     }).join('') + '</tbody>';
@@ -596,7 +615,7 @@ function renderFeed(){
     bets.map(b => {
       const m = MMAP[b.match];
       const t = new Date(b.t).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-      return `<tr class="${b.user===myLogin()?'me':''}"><td>${t}</td><td class="uname">${esc(uname(b.user))}</td><td>${esc(b.match)} <span class="sub" style="display:inline">${m?ROUND_NAMES[m.round]:''}</span></td><td><b>${esc(selLabel(b.market||'winner', b.pick))}</b>${b.market&&b.market!=='winner'?` <span class="sub" style="display:inline">${esc(marketName(b.market))}</span>`:''}</td><td class="num">${fmt(b.stake)}</td><td class="num">${Number(b.odds).toFixed(2)}</td><td>${statusTag(b)}</td></tr>`;
+      return `<tr class="${b.user===myLogin()?'me':''}"><td>${t}</td><td class="uname">${esc(uname(b.user))}</td><td>${esc(b.match)} <span class="sub" style="display:inline">${m?esc(roundName(m)):''}</span></td><td><b>${esc(selLabel(b.market||'winner', b.pick))}</b>${b.market&&b.market!=='winner'?` <span class="sub" style="display:inline">${esc(marketName(b.market))}</span>`:''}</td><td class="num">${fmt(b.stake)}</td><td class="num">${Number(b.odds).toFixed(2)}</td><td>${statusTag(b)}</td></tr>`;
     }).join('') + '</tbody>';
 }
 
@@ -736,7 +755,7 @@ function pathBody(mid){
     return `<div class="leg"><b>Gra ${i+1}</b><div class="lgs">${inner}</div></div>`;
   }).join('');
   const total = modal.pick ? selOdds(mid, 'path', modal.pick) : null;
-  const boost = Number((S.cfg && S.cfg.boost_path) || 1);
+  const boost = +(Number((S.cfg && S.cfg.boost_path) || 1) * (MMAP[mid].bracket === 'lower' ? Number((S.cfg && S.cfg.boost_lower) || 1) : 1)).toFixed(2);
   const legs = modal.pick ? L.map(v => v==='none' ? '×1' : legOdds(mid, v).toFixed(2)).join(' × ') : '';
   const bad = conflicts(mid, 'path', modal.pick);
   return `<p class="mhint">Mecz gramy do ${needOf(mid)} wygranych (BO${bo}).</p>
@@ -839,11 +858,15 @@ function openModal(mid, keepPick){
   const hasExtra = Object.keys(mOdds(mid)).length > 0;
   if(!hasExtra) modal.market = 'winner';
   if(modal.pick && !selOdds(mid, modal.market, modal.pick)) modal.pick = null;
-  const title = m.round===4 ? 'Kto wygra turniej?' : `Kto wygra mecz ${m.id} i ${ROUND_GOAL[m.round]}?`;
+  const title = m.bracket === 'lower'
+    ? (m.round === 6 ? 'Kto wygra dolną drabinkę?' : `Kto wygra mecz ${m.id} w dolnej drabince?`)
+    : m.round === 4 ? 'Kto wygra turniej?' : `Kto wygra mecz ${m.id} i ${ROUND_GOAL[m.round]}?`;
   const bal = myBalance();
   const gs = gamesOf(mid);
+  const lowBoost = Number((S.cfg && S.cfg.boost_lower) || 1);
+  const lowNote = m.bracket === 'lower' ? `<p class="mhint">Mecz o niższe miejsca — kursy w dolnej drabince są podbite ×${+lowBoost.toFixed(2)}.</p>` : '';
   const backer = myBacked(mid);
-  let body = backer ? `<p class="mhint backer">Obstawiasz w tym meczu <b>${esc(pname(backer))}</b> — typy na rywala są zablokowane.</p>` : '';
+  let body = lowNote + (backer ? `<p class="mhint backer">Obstawiasz w tym meczu <b>${esc(pname(backer))}</b> — typy na rywala są zablokowane.</p>` : '');
 
   if(st==='done'){
     body += `<p>Wynik: <b style="color:var(--win)">${esc(pname(S.results[mid]))}</b> wygrał ten mecz.</p>`;
@@ -851,6 +874,8 @@ function openModal(mid, keepPick){
   } else if(st==='closed'){
     body += `<p class="note" style="margin-top:0">Zakłady na ten mecz są zamknięte.</p>`;
     if(gs.length) body += gamesList(gs);
+  } else if(!cands.length){
+    body += `<p class="note" style="margin-top:0">Ten mecz czeka na graczy — kursy pojawią się, gdy będzie wiadomo, kto w nim zagra.</p>`;
   } else {
     if(hasExtra) body += `<div class="mkts">` + MARKETS.map(([k,l]) =>
       `<button type="button" class="mkt ${modal.market===k?'on':''}" data-mkt="${k}">${esc(l)}</button>`).join('') + `</div>`;
@@ -876,7 +901,7 @@ function openModal(mid, keepPick){
 
   if(S.me.admin) body += adminHTML(mid, m, st);
 
-  $('#modal').innerHTML = `<div class="mtop"><div><div class="sub" style="margin:0 0 2px">${ROUND_NAMES[m.round]} · Mecz ${esc(m.id)}</div><h3>${esc(title)}</h3></div><button class="x" id="closeX" aria-label="Zamknij">✕</button></div><div class="mbody">${body}</div>`;
+  $('#modal').innerHTML = `<div class="mtop"><div><div class="sub" style="margin:0 0 2px">${esc(roundName(m))} · Mecz ${esc(m.id)}</div><h3>${esc(title)}</h3></div><button class="x" id="closeX" aria-label="Zamknij">✕</button></div><div class="mbody">${body}</div>`;
   $('#overlay').hidden = false;
   updatePotential();
 }
