@@ -148,6 +148,8 @@ tr.me .uname{color:var(--accent);font-weight:700}
 .grow > b{font-size:12px;width:46px;flex:none}
 .grow select{flex:1;min-width:92px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px}
 .grow .done{flex:1;font-size:13px;font-weight:600}
+.grow.off{opacity:.45}
+.grow.off .done{font-weight:400;font-style:italic}
 .grow button{border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-text)}
 .grow button.x{background:var(--lose-soft);color:var(--lose);width:auto;height:auto}
 .glist{font-size:13px;margin:0 0 10px}
@@ -828,21 +830,30 @@ function adminHTML(mid, m, st){
   if(!a || !b){
     html += `<p class="note" style="margin:0 0 8px">Wyniki gier można wpisać, gdy obaj gracze są znani.</p>`;
   } else {
-    let wa = 0, wb = 0, rows = '';
+    let wa = 0, wb = 0, open = true, rows = '';
     for(let n = 1; n <= bo; n++){
       const g = byNo[n];
-      if(!g){
+      if(g){
+        rows += `<div class="grow"><b>Gra ${n}</b><span class="done">${esc(pname(g.winner))} · ${esc(methodName(g.method))}</span><button type="button" class="x" data-ungame="${n}">Usuń</button></div>`;
+        if(g.winner === a) wa++; else wb++;
+        if(wa === need || wb === need){
+          const sc = Math.max(wa,wb) + ':' + Math.min(wa,wb);
+          for(let k = n + 1; k <= bo; k++)
+            rows += `<div class="grow off"><b>Gra ${k}</b><span class="done">nie odbyła się — seria skończona ${sc}</span></div>`;
+          break;
+        }
+      } else if(open){
+        open = false;
         rows += `<div class="grow"><b>Gra ${n}</b>
           <select data-gw="${n}"><option value="">kto wygrał…</option><option value="${esc(a)}">${esc(pname(a))}</option><option value="${esc(b)}">${esc(pname(b))}</option></select>
           <select data-gm="${n}"><option value="">czym…</option>${METHODS.map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
           <button type="button" data-game="${n}">Zapisz</button></div>`;
-        break;
+      } else {
+        rows += `<div class="grow off"><b>Gra ${n}</b><span class="done">czeka na wynik gry ${n-1}</span></div>`;
       }
-      rows += `<div class="grow"><b>Gra ${n}</b><span class="done">${esc(pname(g.winner))} · ${esc(methodName(g.method))}</span><button type="button" class="x" data-ungame="${n}">Usuń</button></div>`;
-      if(g.winner === a) wa++; else wb++;
-      if(wa === need || wb === need) break;
     }
     html += `<div class="gform">${rows}</div>`;
+    html += `<p class="note" style="margin:0 0 10px">Gry wpisujesz po kolei. Stan serii: <b>${wa}:${wb}</b>${(wa===need||wb===need)?' — rozstrzygnięta':''}.</p>`;
   }
   html += st === 'done'
     ? `<button class="btn danger" id="undoBtn">Cofnij cały wynik</button>`
@@ -968,7 +979,7 @@ $('#overlay').addEventListener('click', e => {
     return act('game', { match:mid, game:Number(n), winner:gw.value, method:gm.value }, () => openModal(mid));
   }
   const ug = e.target.closest('[data-ungame]');
-  if(ug){ if(confirm(`Usunąć wynik gry ${ug.dataset.ungame}?`)) act('ungame', { match:mid, game:Number(ug.dataset.ungame) }, () => openModal(mid)); return; }
+  if(ug){ if(confirm(`Usunąć wynik gry ${ug.dataset.ungame} i wszystkich późniejszych?`)) act('ungame', { match:mid, game:Number(ug.dataset.ungame) }, () => openModal(mid)); return; }
   const w = e.target.closest('[data-win]');
   if(w){ if(confirm(`Zatwierdzić: wygrał ${pname(w.dataset.win)}?`)) act('result', { match:mid, winner:w.dataset.win }, () => openModal(mid)); return; }
   if(e.target.closest('#toggleClose')) return act('toggle', { match:mid }, () => openModal(mid));
